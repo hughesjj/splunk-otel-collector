@@ -225,3 +225,14 @@ endif
 .PHONY: update-examples
 update-examples:
 	cd examples && $(MAKE) update-examples
+
+.PHONY: test-gh-actions
+test-gh-actions:
+	echo "In makefile for github actions"
+	echo "GITHUB_WORKSPACE=$(GITHUB_WORKSPACE)"
+	echo "GITHUB_REF=$(GITHUB_REF)"
+	echo "GITHUB_REF_NAME=$(GITHUB_REF_NAME)"
+	echo "GITHUB_REF_TYPE=$(GITHUB_REF_TYPE)"
+	echo "VERSION=$(VERSION)"
+	echo "calling to external script"
+	./internal/buildscripts/packaging/temp-gh-actions-test/test-gh-actions-shell-script.sh
