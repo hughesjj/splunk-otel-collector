@@ -53,6 +53,12 @@ jobs:
           platforms: ${{ matrix.ARCH }}
       - run: |
           make docker-otelcol ARCH=${{ matrix.ARCH }}
+          path: |
+            /home/runner/go/pkg/mod
+            /home/runner/.cache/go-build
+          key: v1-go-pkg-mod-${{ runner.os }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
+      - run: make install-tools
+      - run: make docker-otelcol
         env:
           DOCKER_BUILDKIT: '1'
       - run: docker save -o ./bin/image.tar otelcol:latest
