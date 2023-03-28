@@ -123,11 +123,6 @@ gendependabot:
 		  echo "  - package-ecosystem: \"maven\"\n    directory: \"$${dir:1}\"\n    schedule:\n      interval: \"weekly\"" >> ${DEPENDABOT_PATH} ); \
 	done
 
-.PHONY: generate
-generate: install-tools
-	go generate -run "mdatagen" -x ./...
-
-
 .PHONY: tidy-all
 tidy-all:
 	$(MAKE) $(FOR_GROUP_TARGET) TARGET="tidy"
@@ -145,27 +140,36 @@ install-tools:
 	cd ./internal/tools && go install golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment
 	cd ./internal/tools && go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/mdatagen
 
-.PHONY: otelcol
-otelcol:
+.PHONY: generate
+generate:
 	go generate ./...
+
+.PHONY: otelcol
+otelcol: generate | fmt
 	GO111MODULE=on CGO_ENABLED=0 go build -trimpath -o ./bin/otelcol_$(GOOS)_$(GOARCH)$(EXTENSION) $(BUILD_INFO) ./cmd/otelcol
 	ln -sf otelcol_$(GOOS)_$(GOARCH)$(EXTENSION) ./bin/otelcol
 
 .PHONY: translatesfx
-translatesfx:
-	go generate ./...
+translatesfx: generate | fmt
 	GO111MODULE=on CGO_ENABLED=0 go build -trimpath -o ./bin/translatesfx_$(GOOS)_$(GOARCH)$(EXTENSION) $(BUILD_INFO) ./cmd/translatesfx
 	ln -sf translatesfx_$(GOOS)_$(GOARCH)$(EXTENSION) ./bin/translatesfx
 
 .PHONY: migratecheckpoint
-migratecheckpoint:
-	go generate ./...
+migratecheckpoint: generate | fmt
 	GO111MODULE=on CGO_ENABLED=0 go build -trimpath -o ./bin/migratecheckpoint_$(GOOS)_$(GOARCH)$(EXTENSION) $(BUILD_INFO) ./cmd/migratecheckpoint
 	ln -sf migratecheckpoint_$(GOOS)_$(GOARCH)$(EXTENSION) ./bin/migratecheckpoint
 
 .PHONY: bundle.d
 bundle.d:
 	go generate -tags bundle.d ./...
+
+.PHONY: _generate-metrics
+_generate-metrics:
+	go generate -run "mdatagen" -x ./...
+
+.PHONY: generate-metrics
+generate-metrics: install-tools _generate-metrics fmt
+
 
 .PHONY: add-tag
 add-tag:
