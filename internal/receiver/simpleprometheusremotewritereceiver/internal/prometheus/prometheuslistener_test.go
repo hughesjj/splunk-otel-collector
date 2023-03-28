@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package simpleprometheusremotewritereceiver
+package prometheus
 
 import (
 	"bytes"
@@ -161,12 +161,6 @@ func TestListener(t *testing.T) {
 			convey.So(listener.Close(), convey.ShouldBeNil)
 		})
 	})
-}
-
-type errRead struct{}
-
-func (e *errRead) Read(p []byte) (int, error) {
-	panic("blarg")
 }
 
 func TestBad(t *testing.T) {
