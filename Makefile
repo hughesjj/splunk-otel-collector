@@ -141,7 +141,7 @@ install-tools:
 	cd ./internal/tools && go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/mdatagen
 
 .PHONY: generate
-generate:
+generate: | install-tools
 	go generate ./...
 
 .PHONY: otelcol
