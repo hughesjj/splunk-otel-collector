@@ -141,21 +141,21 @@ tidy-all:
 #	cd ./internal/tools && go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/mdatagen
 
 .PHONY: generate
-generate: | install-tools
+generate: install-tools
 	go generate ./...
 
 .PHONY: otelcol
-otelcol: generate | fmt
+otelcol: generate fmt
 	GO111MODULE=on CGO_ENABLED=0 go build -trimpath -o ./bin/otelcol_$(GOOS)_$(GOARCH)$(EXTENSION) $(BUILD_INFO) ./cmd/otelcol
 	ln -sf otelcol_$(GOOS)_$(GOARCH)$(EXTENSION) ./bin/otelcol
 
 .PHONY: translatesfx
-translatesfx: generate | fmt
+translatesfx: generate fmt
 	GO111MODULE=on CGO_ENABLED=0 go build -trimpath -o ./bin/translatesfx_$(GOOS)_$(GOARCH)$(EXTENSION) $(BUILD_INFO) ./cmd/translatesfx
 	ln -sf translatesfx_$(GOOS)_$(GOARCH)$(EXTENSION) ./bin/translatesfx
 
 .PHONY: migratecheckpoint
-migratecheckpoint: generate | fmt
+migratecheckpoint: generate fmt
 	GO111MODULE=on CGO_ENABLED=0 go build -trimpath -o ./bin/migratecheckpoint_$(GOOS)_$(GOARCH)$(EXTENSION) $(BUILD_INFO) ./cmd/migratecheckpoint
 	ln -sf migratecheckpoint_$(GOOS)_$(GOARCH)$(EXTENSION) ./bin/migratecheckpoint
 

@@ -84,13 +84,13 @@ checklinks:
 		$(MDLINKCHECK) -q -c $(SRC_ROOT)/.github/workflows/check_links_config.json || true
 
 .PHONY: fmt
-fmt: | install-tools addlicense misspell-correction
+fmt: install-tools addlicense misspell-correction
 	gofmt -w -s .
 	goimports -w  -local github.com/signalfx/splunk-otel-collector ./
 	fieldalignment -fix ./... || true
 
 .PHONY: lint
-lint: | install-tools checklicense misspell
+lint: install-tools checklicense misspell
 	$(LINT) run --allow-parallel-runners
 
 .PHONY: tidy
