@@ -16,65 +16,40 @@ package simpleprometheusremotewritereceiver
 
 import (
 	"context"
-	"fmt"
-
+	"github.com/signalfx/golib/pointer"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
-	"go.opentelemetry.io/collector/receiver/scraperhelper"
-
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/metadata"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prometheus"
+	"time"
 )
-
-const typeStr = "databricks"
 
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
-		typeStr,
+		typeString,
 		createDefaultConfig,
-		receiver.WithMetrics(newReceiverFactory(), component.StabilityLevelDevelopment),
+		receiver.WithMetrics(createMetricsReceiver, component.StabilityLevelDevelopment),
 	)
 }
 
-func newReceiverFactory() receiver.CreateMetricsFunc {
-	return func(
-		_ context.Context,
-		settings receiver.CreateSettings,
-		cfg component.Config,
-		consumer consumer.Metrics,
-	) (receiver.Metrics, error) {
-		dbrcfg := cfg.(*prometheus.Config)
-		httpClient, err := dbrcfg.ToClient(nil, settings.TelemetrySettings)
-		if err != nil {
-			return nil, fmt.Errorf("newReceiverFactory failed to create client from config: %w", err)
-		}
-		promListener := prometheus.NewListener()
-		dbrClient := prometheus.NewRawClient(dbrcfg.Token, dbrcfg.Endpoint, httpClient, settings.Logger)
-		dbrsvc := databricks.NewService(dbrClient, dbrcfg.MaxResults)
-		ssvc := spark.NewService(settings.Logger, httpClient, dbrcfg.Token, dbrcfg.SparkEndpoint, dbrcfg.SparkOrgID, dbrcfg.SparkUIPort)
-		dbrScraper := scraper{
-			dbrInstanceName: dbrcfg.InstanceName,
-			logger:          settings.Logger,
-			rmp:             databricks.NewRunMetricsProvider(dbrsvc),
-			dbrmp:           databricks.MetricsProvider{Svc: dbrsvc},
-			metricsBuilder:  metadata.NewMetricsBuilder(dbrcfg.MetricsBuilderConfig, settings),
-			scmb:            spark.ClusterMetricsBuilder{Ssvc: ssvc},
-			semb: spark.ExtraMetricsBuilder{
-				Ssvc:   ssvc,
-				Logger: settings.Logger,
-			},
-			dbrsvc: dbrsvc,
-		}
-		collectorScraper, err := scraperhelper.NewScraper(typeStr, dbrScraper.scrape)
-		if err != nil {
-			return nil, fmt.Errorf("newReceiverFactory failed to create scraper: %w", err)
-		}
-		return scraperhelper.NewScraperControllerReceiver(
-			&dbrcfg.ScraperControllerSettings,
-			settings,
-			consumer,
-			scraperhelper.AddScraper(collectorScraper),
-		)
+func createMetricsReceiver(
+	_ context.Context,
+	params receiver.CreateSettings,
+	cfg component.Config,
+	consumer consumer.Metrics,
+) (receiver.Metrics, error) {
+	c := cfg.(*Config)
+	// promListener, err := prometheus.NewListener()
+	return New(params, *c, consumer)
+}
+
+func createDefaultConfig() component.Config {
+	return &Config{
+		ListenAddr: confignet.NetAddr{
+			Endpoint:  "127.0.0.1:1234", // TODO hughesjj this.. doesn't seem right to me
+			Transport: "tcp",
+		},
+		ListenPath: "/write",
+		Timeout:    pointer.Duration(time.Second * 30),
 	}
 }

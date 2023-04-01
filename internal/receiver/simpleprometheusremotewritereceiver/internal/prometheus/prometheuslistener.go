@@ -26,16 +26,13 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/gorilla/mux"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/signalfx/gateway/protocol"
 	"github.com/signalfx/golib/datapoint"
 	"github.com/signalfx/golib/datapoint/dpsink"
 	"github.com/signalfx/golib/log"
-	"github.com/signalfx/golib/pointer"
 	"github.com/signalfx/golib/sfxclient"
-	"github.com/signalfx/golib/web"
 )
 
 // Server is the prometheus server
@@ -47,37 +44,15 @@ type Server struct {
 	protocol.CloseableHealthCheck
 }
 
-// Close the socket currently open for collectd JSON connections
-func (s *Server) Close() error {
-	return s.listener.Close()
-}
-
-// DebugDatapoints returns datapoints that are used for debugging the listener
-func (s *Server) DebugDatapoints() []*datapoint.Datapoint {
-	return append(s.collector.Datapoints(), s.HealthDatapoints()...)
-}
-
-// DefaultDatapoints returns datapoints that should always be reported from the listener
-func (s *Server) DefaultDatapoints() []*datapoint.Datapoint {
-	return []*datapoint.Datapoint{}
-}
-
-// Datapoints returns decoder datapoints
-func (s *Server) Datapoints() []*datapoint.Datapoint {
-	return append(s.DebugDatapoints(), s.DefaultDatapoints()...)
-}
-
-var _ protocol.Listener = &Server{}
-
 type decoder struct {
 	SendTo             dpsink.Sink
-	Logger             log.Logger
-	Bucket             *sfxclient.RollingBucket
+	Logger             log.Logger               // TODO Should go to zap logger in... obsreport?
+	Bucket             *sfxclient.RollingBucket // TODO find the equivalent for otel
 	DrainSize          *sfxclient.RollingBucket
 	readAll            func(r io.Reader) ([]byte, error)
 	TotalErrors        int64
 	TotalNaNs          int64
-	TotalBadDatapoints int64
+	TotalBadDatapoints int64 // TODO send ot obsreport
 }
 
 func getDimensions(labels []prompb.Label) map[string]string {
@@ -104,6 +79,9 @@ func getMetricName(dims map[string]string) string {
 // https://prometheus.io/docs/instrumenting/writing_exporters/#metrics
 // https://prometheus.io/docs/practices/histograms/
 func getMetricType(metric string) datapoint.MetricType {
+
+	// TODO hughesjj this should use the case when syntax we've been seeing in otel I think
+
 	// _total is a convention for counters, you should use it if you’re using the COUNTER type.
 	if strings.HasSuffix(metric, "_total") {
 		return datapoint.Counter
@@ -122,6 +100,9 @@ func getMetricType(metric string) datapoint.MetricType {
 }
 
 func (d *decoder) getDatapoints(ts prompb.TimeSeries) []*datapoint.Datapoint {
+	// TODO hughesjj Labels should be attributes
+	// TODO hughesjj This should be changed to translate to pMetrics
+	// TODO hughesjj Eh, honestly this is pretty specific to SFX
 	dimensions := getDimensions(ts.Labels)
 	metricName := getMetricName(dimensions)
 	if metricName == "" {
@@ -150,6 +131,8 @@ func (d *decoder) getDatapoints(ts prompb.TimeSeries) []*datapoint.Datapoint {
 
 // ServeHTTPC decodes datapoints for the connection and sends them to the decoder's sink
 func (d *decoder) ServeHTTPC(ctx context.Context, rw http.ResponseWriter, req *http.Request) {
+
+	// TODO This is going to be our ingest function prolly
 	start := time.Now()
 	defer d.Bucket.Add(float64(time.Since(start).Nanoseconds()))
 	var err error
@@ -197,6 +180,7 @@ func (d *decoder) ServeHTTPC(ctx context.Context, rw http.ResponseWriter, req *h
 
 // Datapoints about this decoder, including how many datapoints it decoded
 func (d *decoder) Datapoints() []*datapoint.Datapoint {
+	// TODO hughesjj More metadata to be sent to likely obsreport
 	dps := d.Bucket.Datapoints()
 	dps = append(dps, d.DrainSize.Datapoints()...)
 	dps = append(dps,
@@ -205,81 +189,4 @@ func (d *decoder) Datapoints() []*datapoint.Datapoint {
 		sfxclient.Cumulative("prometheus.total_bad_datapoints", nil, atomic.LoadInt64(&d.TotalBadDatapoints)),
 	)
 	return dps
-}
-
-// Config controls optional parameters for collectd listeners
-type Config struct {
-	ListenAddr      *string
-	ListenPath      *string
-	Timeout         *time.Duration
-	StartingContext context.Context
-	HealthCheck     *string
-	HTTPChain       web.NextConstructor
-	Logger          log.Logger
-}
-
-var defaultConfig = &Config{
-	ListenAddr:      pointer.String("127.0.0.1:1234"),
-	ListenPath:      pointer.String("/write"),
-	Timeout:         pointer.Duration(time.Second * 30),
-	HealthCheck:     pointer.String("/healthz"),
-	Logger:          log.Discard,
-	StartingContext: context.Background(),
-}
-
-// NewListener serves http prometheus requests
-func NewListener(sink dpsink.Sink, passedConf *Config) (*Server, error) {
-	conf := pointer.FillDefaultFrom(passedConf, defaultConfig).(*Config)
-
-	listener, err := net.Listen("tcp", *conf.ListenAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	r := mux.NewRouter()
-	metricTracking := &web.RequestCounter{}
-	fullHandler := web.NewHandler(conf.StartingContext, web.FromHTTP(r))
-	if conf.HTTPChain != nil {
-		fullHandler.Add(web.NextHTTP(metricTracking.ServeHTTP))
-		fullHandler.Add(conf.HTTPChain)
-	}
-	promDecoder := decoder{
-		SendTo:  sink,
-		Logger:  conf.Logger,
-		readAll: io.ReadAll,
-		Bucket: sfxclient.NewRollingBucket("request_time.ns", map[string]string{
-			"endpoint":  "prometheus",
-			"direction": "listener",
-		}),
-		DrainSize: sfxclient.NewRollingBucket("drain_size", map[string]string{
-			"direction":   "forwarder",
-			"destination": "signalfx",
-		}),
-	}
-	listenServer := Server{
-		listener: listener,
-		server: http.Server{
-			Handler:      fullHandler,
-			Addr:         listener.Addr().String(),
-			ReadTimeout:  *conf.Timeout,
-			WriteTimeout: *conf.Timeout,
-		},
-		decoder: &promDecoder,
-		collector: sfxclient.NewMultiCollector(
-			metricTracking,
-			&promDecoder),
-	}
-	listenServer.SetupHealthCheck(conf.HealthCheck, r, conf.Logger)
-	httpHandler := web.NewHandler(conf.StartingContext, listenServer.decoder)
-	SetupPrometheusPaths(r, httpHandler, *conf.ListenPath)
-
-	go func() {
-		log.IfErr(conf.Logger, listenServer.server.Serve(listener))
-	}()
-	return &listenServer, nil
-}
-
-// SetupPrometheusPaths tells the router which paths the given handler should handle
-func SetupPrometheusPaths(r *mux.Router, handler http.Handler, endpoint string) {
-	r.Path(endpoint).Methods("POST").Headers("Content-Type", "application/x-protobuf").Handler(handler)
 }
