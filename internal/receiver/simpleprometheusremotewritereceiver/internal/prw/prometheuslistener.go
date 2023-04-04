@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package prometheus
+package prw
 
 import (
 	"context"
@@ -55,7 +55,7 @@ type decoder struct {
 	TotalBadDatapoints int64 // TODO send ot obsreport
 }
 
-func getDimensions(labels []prompb.Label) map[string]string {
+func getDimensionsOrAttributesOrWhateverFromLabels(labels []prompb.Label) map[string]string {
 	dims := make(map[string]string, len(labels))
 	for _, l := range labels {
 		dims[l.Name] = l.Value
@@ -63,7 +63,7 @@ func getDimensions(labels []prompb.Label) map[string]string {
 	return dims
 }
 
-func getMetricName(dims map[string]string) string {
+func getMetricNameAndRemoveFromLabels(dims map[string]string) string {
 	for k, v := range dims {
 		if k == model.MetricNameLabel {
 			delete(dims, k)
@@ -103,8 +103,8 @@ func (d *decoder) getDatapoints(ts prompb.TimeSeries) []*datapoint.Datapoint {
 	// TODO hughesjj Labels should be attributes
 	// TODO hughesjj This should be changed to translate to pMetrics
 	// TODO hughesjj Eh, honestly this is pretty specific to SFX
-	dimensions := getDimensions(ts.Labels)
-	metricName := getMetricName(dimensions)
+	dimensions := getDimensionsOrAttributesOrWhateverFromLabels(ts.Labels)
+	metricName := getMetricNameAndRemoveFromLabels(dimensions)
 	if metricName == "" {
 		atomic.AddInt64(&d.TotalBadDatapoints, int64(len(ts.Samples)))
 		return []*datapoint.Datapoint{}

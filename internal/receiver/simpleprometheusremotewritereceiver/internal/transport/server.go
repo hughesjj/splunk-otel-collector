@@ -18,10 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote"
-	"net/http"
 
 	"go.opentelemetry.io/collector/consumer"
 )
@@ -39,10 +40,7 @@ type Server interface {
 		sc consumer.Logs,
 		tc consumer.Traces,
 		r Reporter,
-		ts chan<- prompb.TimeSeries,
-		samples chan<- prompb.Sample,
-		exemplars chan<- prompb.Exemplar,
-		histograms chan<- prompb.Histogram,
+		ts chan<- prompb.WriteRequest,
 	) error
 
 	// Close stops any running ListenAndServe, however, it waits for any
@@ -84,13 +82,6 @@ func handleRemoteWrite(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// TODO hughesjj figure out how to apply backpressure
-	//// Check if the work queue is full
-	//if len(workQueue) >= maxQueueSize {
-	//	w.Header().Set("Retry-After", "30") // Suggest a 30-second delay before the next request
-	//	http.Error(w, "Work queue is full, apply backpressure", http.StatusTooManyRequests)
-	//	return
-	//}
 
 	for _, ts := range req.Timeseries {
 		m := make(model.Metric, len(ts.Labels))

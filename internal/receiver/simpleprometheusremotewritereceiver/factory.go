@@ -16,12 +16,13 @@ package simpleprometheusremotewritereceiver
 
 import (
 	"context"
+	"time"
+
 	"github.com/signalfx/golib/pointer"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
-	"time"
 )
 
 func NewFactory() receiver.Factory {
