@@ -71,6 +71,7 @@ func (r *simplePrometheusWriteReceiver) buildTransportServer(ctx context.Context
 	cfg := prw.PrwConfig{
 		Listener:     listener,
 		Reporter:     r.reporter,
+		Path:         r.config.ListenPath,
 		Readtimeout:  r.config.Timeout,
 		Writetimeout: r.config.Timeout,
 	}

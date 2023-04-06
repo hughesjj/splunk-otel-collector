@@ -189,7 +189,7 @@ func (prwParser *PrwOtelParser) addMetrics(rm pmetric.ResourceMetrics, family st
 			nm.SetName(family)
 		}
 		switch metricType := metricsData.MetricMetadata.Type; metricType {
-		case prompb.MetricMetadata_GAUGE:
+		case prompb.MetricMetadata_GAUGE, prompb.MetricMetadata_UNKNOWN:
 			gauge := nm.SetEmptyGauge()
 			for _, sample := range *metricsData.Samples {
 				dp := gauge.DataPoints().AppendEmpty()

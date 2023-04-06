@@ -39,6 +39,7 @@ type PrwConfig struct {
 	Readtimeout  *time.Duration
 	Writetimeout *time.Duration
 	Reporter     Reporter
+	Path         string
 }
 
 func NewPrometheusRemoteWriteReceiver(ctx context.Context, config PrwConfig, mc chan pmetric.Metrics) (*PrometheusRemoteWriteReceiver, error) {
@@ -46,7 +47,10 @@ func NewPrometheusRemoteWriteReceiver(ctx context.Context, config PrwConfig, mc 
 	if nil != err {
 		return nil, err
 	}
-	handler := newHandler(ctx, &parser, config.Reporter, mc)
+	handler := newHandler(ctx, &parser, config.Reporter, config.Path, mc)
+	// TODO hughesjj use mux instead
+	//address := config.Listener.Addr().String()
+	//http.List()
 	server := http.Server{
 		Handler:      handler,
 		Addr:         config.Listener.Addr().String(),
@@ -84,14 +88,16 @@ func (prw *PrometheusRemoteWriteReceiver) ListenAndServe() error {
 
 type handler struct {
 	ctx      context.Context
+	path     string
 	parser   PrwOtelParser
 	reporter Reporter
 	mc       chan pmetric.Metrics
 }
 
-func newHandler(ctx context.Context, parser *PrwOtelParser, reporter Reporter, mc chan pmetric.Metrics) *handler {
+func newHandler(ctx context.Context, parser *PrwOtelParser, reporter Reporter, path string, mc chan pmetric.Metrics) *handler {
 	return &handler{
 		ctx:      ctx,
+		path:     path,
 		parser:   *parser,
 		reporter: reporter,
 		mc:       mc,
@@ -99,6 +105,9 @@ func newHandler(ctx context.Context, parser *PrwOtelParser, reporter Reporter, m
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != h.path {
+		return
+	}
 	req, err := remote.DecodeWriteRequest(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
