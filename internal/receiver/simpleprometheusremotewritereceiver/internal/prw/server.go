@@ -16,12 +16,12 @@ package prw
 
 import (
 	"context"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/config"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/multierr"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/prometheus/prometheus/storage/remote"
 )
@@ -29,29 +29,34 @@ import (
 type PrometheusRemoteWriteReceiver struct {
 	handler
 	net.Listener
-	http.Server
+	*http.Server
 
 	sync.Mutex
 }
 
-func NewPrometheusRemoteWriteReceiver(ctx context.Context, cfg *config.Config, reporter Reporter, mc chan pmetric.Metrics) (*PrometheusRemoteWriteReceiver, error) {
-	parser, err := NewPrwOtelParser(reporter)
+type PrwConfig struct {
+	Listener     net.Listener
+	Readtimeout  *time.Duration
+	Writetimeout *time.Duration
+	Reporter     Reporter
+}
+
+func NewPrometheusRemoteWriteReceiver(ctx context.Context, config PrwConfig, mc chan pmetric.Metrics) (*PrometheusRemoteWriteReceiver, error) {
+	parser, err := NewPrwOtelParser(config.Reporter)
 	if nil != err {
 		return nil, err
 	}
-	listener, err := net.Listen(cfg.ListenAddr.Transport, cfg.ListenAddr.Endpoint)
-	defer listener.Close()
-	handler := newHandler(ctx, parser, reporter, mc)
+	handler := newHandler(ctx, &parser, config.Reporter, mc)
 	server := http.Server{
 		Handler:      handler,
-		Addr:         listener.Addr().String(),
-		ReadTimeout:  *cfg.Timeout,
-		WriteTimeout: *cfg.Timeout,
+		Addr:         config.Listener.Addr().String(),
+		ReadTimeout:  *config.Readtimeout,
+		WriteTimeout: *config.Writetimeout,
 	}
 	return &PrometheusRemoteWriteReceiver{
 		handler:  *handler,
-		Listener: listener,
-		Server:   server,
+		Listener: config.Listener,
+		Server:   &server,
 	}, nil
 }
 
@@ -84,10 +89,10 @@ type handler struct {
 	mc       chan pmetric.Metrics
 }
 
-func newHandler(ctx context.Context, parser PrwOtelParser, reporter Reporter, mc chan pmetric.Metrics) *handler {
+func newHandler(ctx context.Context, parser *PrwOtelParser, reporter Reporter, mc chan pmetric.Metrics) *handler {
 	return &handler{
 		ctx:      ctx,
-		parser:   parser,
+		parser:   *parser,
 		reporter: reporter,
 		mc:       mc,
 	}

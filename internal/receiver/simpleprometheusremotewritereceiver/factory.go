@@ -40,7 +40,6 @@ func createMetricsReceiver(
 	consumer consumer.Metrics,
 ) (receiver.Metrics, error) {
 	c := cfg.(*Config)
-	// promListener, err := prometheus.NewListener()
 	return New(params, *c, consumer)
 }
 

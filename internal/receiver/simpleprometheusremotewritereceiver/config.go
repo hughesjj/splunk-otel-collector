@@ -15,13 +15,14 @@
 package simpleprometheusremotewritereceiver
 
 import (
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
 	"time"
 
 	"go.opentelemetry.io/collector/config/confignet"
 )
 
 const (
-	typeString = "simpleprometheusremotewrite"
+	typeString = tools.TypeStr
 )
 
 type Config struct {

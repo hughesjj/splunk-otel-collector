@@ -32,7 +32,7 @@ var _ receiver.Metrics = (*simplePrometheusWriteReceiver)(nil)
 // simplePrometheusWriteReceiver implements the receiver.Metrics for PrometheusRemoteWrite protocol.
 type simplePrometheusWriteReceiver struct {
 	settings receiver.CreateSettings
-	config   *Config
+	config   Config
 
 	server       prw.Server
 	reporter     prw.Reporter
@@ -59,14 +59,22 @@ func New(
 
 	r := &simplePrometheusWriteReceiver{
 		settings:     settings,
-		config:       &config,
+		config:       config,
 		nextConsumer: nextConsumer,
 		reporter:     rep,
 	}
 	return r, nil
 }
 func (r *simplePrometheusWriteReceiver) buildTransportServer(ctx context.Context, metrics chan pmetric.Metrics) (prw.Server, error) {
-	server, err := prw.NewPrometheusRemoteWriteReceiver(ctx, r.config, r.reporter, metrics)
+	listener, err := net.Listen(r.config.ListenAddr.Transport, r.config.ListenAddr.Endpoint)
+	defer listener.Close()
+	cfg := prw.PrwConfig{
+		Listener:     listener,
+		Reporter:     r.reporter,
+		Readtimeout:  r.config.Timeout,
+		Writetimeout: r.config.Timeout,
+	}
+	server, err := prw.NewPrometheusRemoteWriteReceiver(ctx, cfg, metrics)
 	return server, err
 
 }

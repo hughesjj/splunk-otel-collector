@@ -21,9 +21,7 @@ import (
 	"strings"
 	"time"
 
-	//"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
-	//"github.com/prometheus/prometheus/storage/remote"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
@@ -48,8 +46,8 @@ type MetricData struct {
 }
 
 type PrwOtelParser struct {
-	metricTypesCache tools.PrometheusMetricTypeCache
-	Reporter
+	metricTypesCache *tools.PrometheusMetricTypeCache
+	Reporter         Reporter
 }
 
 const maxCachedMetadata = 10000
