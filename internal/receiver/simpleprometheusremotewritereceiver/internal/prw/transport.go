@@ -12,19 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package transport
+package prw
 
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net/http"
-
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/storage/remote"
-
-	"go.opentelemetry.io/collector/consumer"
 )
 
 var errNilListenAndServeParameters = errors.New("no parameter of ListenAndServe can be nil")
@@ -35,20 +27,12 @@ type Server interface {
 	// ListenAndServe is a blocking call that starts to listen for client messages
 	// on the specific transport, and prepares the message to be processed by
 	// the Parser and passed to the next consumer.
-	ListenAndServe(
-		mc consumer.Metrics,
-		sc consumer.Logs,
-		tc consumer.Traces,
-		r Reporter,
-		ts chan<- prompb.WriteRequest,
-	) error
+	ListenAndServe() error
 
 	// Close stops any running ListenAndServe, however, it waits for any
 	// data already received to be parsed and sent to the next consumer.
 	Close() error
 }
-
-func (*Server) ListenAndServe() {}
 
 // Reporter is used to report (via zPages, logs, metrics, etc) the events
 // happening when the Server is receiving and processing data.
@@ -74,44 +58,4 @@ type Reporter interface {
 	OnDebugf(
 		template string,
 		args ...interface{})
-}
-
-func handleRemoteWrite(w http.ResponseWriter, r *http.Request) {
-	req, err := remote.DecodeWriteRequest(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	for _, ts := range req.Timeseries {
-		m := make(model.Metric, len(ts.Labels))
-		for _, l := range ts.Labels {
-			m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-		}
-		// workQueue <- ts
-		fmt.Println(m)
-
-		for _, s := range ts.Samples {
-			// TODO hughesjj enque sample?
-			fmt.Printf("\tSample:  %f %d\n", s.Value, s.Timestamp)
-		}
-
-		for _, e := range ts.Exemplars {
-			m := make(model.Metric, len(e.Labels))
-			for _, l := range e.Labels {
-				m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-			}
-			// TODO hughesjj enque exemplar?
-			fmt.Printf("\tExemplar:  %+v %f %d\n", m, e.Value, e.Timestamp)
-		}
-
-		for _, hp := range ts.Histograms {
-			h := remote.HistogramProtoToHistogram(hp)
-			// TODO hughesjj enque histogram?
-			fmt.Printf("\tHistogram:  %s\n", h.String())
-		}
-	}
-
-	// In anticipation of eventually better supporting backpressure, return 202 instead of 204
-	w.WriteHeader(http.StatusAccepted)
 }

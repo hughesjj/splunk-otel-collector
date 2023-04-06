@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-
 var sampleWriteRequestsNoMetadata = []*prompb.WriteRequest{
 	// Counter
 	{
@@ -109,19 +108,19 @@ var sampleWriteRequestsNoMetadata = []*prompb.WriteRequest{
 					{Name: "__name__", Value: "rpc_duration_seconds_count"},
 				},
 				Samples: []prompb.Sample{
-						{Value: 1500, Timestamp: 1633024800000},
-					},
+					{Value: 1500, Timestamp: 1633024800000},
 				},
 			},
 		},
-	}
-
-
+	},
+}
 
 func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
-	parser := NewPrwOtelParser()
+	expectedCalls := 1
+	reporter := NewMockReporter(expectedCalls)
+	parser, err := NewPrwOtelParser(reporter)
 
-	sampleMetadata := []prompb.MetricMetadata
+	var sampleMetadata []prompb.MetricMetadata
 	sampleMetadata = append(sampleMetadata, prompb.MetricMetadata{
 		MetricFamilyName: "foo",
 	})

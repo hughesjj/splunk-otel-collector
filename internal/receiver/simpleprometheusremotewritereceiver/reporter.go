@@ -16,13 +16,13 @@ package simpleprometheusremotewritereceiver
 
 import (
 	"context"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
 
 	"go.opencensus.io/trace"
 	"go.opentelemetry.io/collector/obsreport"
 	"go.opentelemetry.io/collector/receiver"
 	"go.uber.org/zap"
-
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 )
 
 // reporter struct implements the transport.Reporter interface to give consistent
@@ -33,7 +33,7 @@ type reporter struct {
 	obsrecv       *obsreport.Receiver
 }
 
-func newReporter(set receiver.CreateSettings) (transport.Reporter, error) {
+func newReporter(set receiver.CreateSettings) (prw.Reporter, error) {
 	obsrecv, err := obsreport.NewReceiver(obsreport.ReceiverSettings{
 		ReceiverID:             set.ID,
 		Transport:              "tcp",
@@ -65,7 +65,7 @@ func (r *reporter) OnTranslationError(ctx context.Context, err error) {
 		return
 	}
 
-	r.logger.Debug(receiver.typeStr+"translation error", zap.Error(err))
+	r.logger.Debug("translation error"+tools.TypeStr, zap.Error(err))
 
 	// Using annotations since multiple translation errors can happen in the
 	// same client message/request. The time itself is not relevant.
@@ -87,7 +87,7 @@ func (r *reporter) OnMetricsProcessed(
 ) {
 	if err != nil {
 		r.logger.Debug(
-			typeStr+" failed to push metrics into pipeline",
+			tools.TypeStr+" failed to push metrics into pipeline",
 			zap.Int("numReceivedMessages", numReceivedMessages),
 			zap.Error(err))
 
@@ -98,7 +98,7 @@ func (r *reporter) OnMetricsProcessed(
 		})
 	}
 
-	r.obsrecv.EndMetricsOp(ctx, typeStr, numReceivedMessages, err)
+	r.obsrecv.EndMetricsOp(ctx, tools.TypeStr, numReceivedMessages, err)
 }
 
 func (r *reporter) OnDebugf(template string, args ...interface{}) {

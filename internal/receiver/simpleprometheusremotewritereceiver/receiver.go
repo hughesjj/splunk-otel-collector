@@ -17,16 +17,13 @@ package simpleprometheusremotewritereceiver
 import (
 	"context"
 	"errors"
-	"net"
-	"time"
-
-	"go.opentelemetry.io/collector/client"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
-
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
+	"net"
+	"sync"
 )
 
 // TODO hughesjj wait why is this a thing?
@@ -37,16 +34,17 @@ type simplePrometheusWriteReceiver struct {
 	settings receiver.CreateSettings
 	config   *Config
 
-	server   transport.Server
-	reporter transport.Reporter
-	//parser       protocol.Parser
+	server       prw.Server
+	reporter     prw.Reporter
 	nextConsumer consumer.Metrics
 	cancel       context.CancelFunc
+
+	sync.Mutex
 }
 
 // New creates the PrometheusRemoteWrite receiver with the given parameters.
 func New(
-	set receiver.CreateSettings,
+	settings receiver.CreateSettings,
 	config Config,
 	nextConsumer consumer.Metrics,
 ) (receiver.Metrics, error) {
@@ -54,72 +52,73 @@ func New(
 		return nil, component.ErrNilNextConsumer
 	}
 
-	rep, err := newReporter(set)
+	rep, err := newReporter(settings)
 	if err != nil {
 		return nil, err
 	}
 
 	r := &simplePrometheusWriteReceiver{
-		settings:     set,
+		settings:     settings,
 		config:       &config,
 		nextConsumer: nextConsumer,
 		reporter:     rep,
-		parser:       &protocol.PrometheusWriteReceiver{},
 	}
 	return r, nil
+}
+func (r *simplePrometheusWriteReceiver) buildTransportServer(ctx context.Context, metrics chan pmetric.Metrics) (prw.Server, error) {
+	server, err := prw.NewPrometheusRemoteWriteReceiver(ctx, r.config, r.reporter, metrics)
+	return server, err
+
 }
 
 // Start starts a UDP server that can process StatsD messages.
 func (r *simplePrometheusWriteReceiver) Start(ctx context.Context, host component.Host) error {
+	metricsChannel := make(chan pmetric.Metrics, 10)
 	ctx, r.cancel = context.WithCancel(ctx)
-	server, err := r.server(*r.config)
+	server, err := r.buildTransportServer(ctx, metricsChannel)
 	if err != nil {
 		return err
+	}
+	r.Lock()
+	defer r.Unlock()
+	if nil != r.server {
+		err := r.server.Close()
+		if err != nil {
+			return err
+		}
 	}
 	r.server = server
-	transferChan := make(chan transport.Metric, 10)
-	ticker := time.NewTicker(r.config.AggregationInterval)
-	err = r.parser.Initialize(
-		r.config.EnableMetricType,
-		r.config.IsMonotonicCounter,
-		r.config.TimerHistogramMapping,
-		// TODO check all here
-	)
-	if err != nil {
-		return err
-	}
-	go func() {
-		if err := r.server.ListenAndServe(r.parser, r.nextConsumer, r.reporter, transferChan); err != nil {
+	// Start server
+	go func(ctx context.Context) {
+		if err := r.server.ListenAndServe(); err != nil {
 			if !errors.Is(err, net.ErrClosed) {
 				host.ReportFatalError(err)
 			}
 		}
-	}()
-	go func() {
+	}(ctx)
+	// Manage server lifecycle
+	go func(ctx context.Context) {
 		for {
 			select {
-			case <-ticker.C:
-				// TODO hughesjj This happens periodically, not sure we actually want it
-				batchMetrics := r.parser.GetMetrics()
-				for _, batch := range batchMetrics {
-					batchCtx := client.NewContext(ctx, batch.Info)
-					r.Flush(batchCtx, batch.Metrics, r.nextConsumer)
+			case metrics := <-metricsChannel:
+				err := r.Flush(ctx, metrics)
+				if err != nil {
+					r.reporter.OnTranslationError(ctx, err)
+					return
 				}
-			case metric := <-transferChan:
-				// TODO hughesjj
-				_ = r.parser.Aggregate(metric.Raw, metric.Addr)
 			case <-ctx.Done():
-				ticker.Stop()
 				return
 			}
 		}
-	}()
+	}(ctx)
 
 	return nil
 }
 
 // Shutdown stops the PrometheusSimpleRemoteWrite receiver.
 func (r *simplePrometheusWriteReceiver) Shutdown(context.Context) error {
+	r.Lock()
+	defer r.Unlock()
 	if r.cancel == nil {
 		return nil
 	}
@@ -128,11 +127,8 @@ func (r *simplePrometheusWriteReceiver) Shutdown(context.Context) error {
 	return err
 }
 
-func (r *simplePrometheusWriteReceiver) Flush(ctx context.Context, metrics pmetric.Metrics, nextConsumer consumer.Metrics) error {
-	error := nextConsumer.ConsumeMetrics(ctx, metrics)
-	if error != nil {
-		return error
-	}
-
-	return nil
+func (r *simplePrometheusWriteReceiver) Flush(ctx context.Context, metrics pmetric.Metrics) error {
+	err := r.nextConsumer.ConsumeMetrics(ctx, metrics)
+	r.reporter.OnMetricsProcessed(ctx, metrics.DataPointCount(), err)
+	return err
 }

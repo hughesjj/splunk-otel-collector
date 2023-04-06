@@ -15,28 +15,25 @@
 package prw
 
 import (
+	"context"
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"strings"
+	"time"
+
 	//"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	//"github.com/prometheus/prometheus/storage/remote"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
-func (prwParser *PrwOtelParser) FromPrometheusWriteRequestMetrics(request prompb.WriteRequest) (
-	pmetric.Metrics,
-	error,
-) {
+func (prwParser *PrwOtelParser) FromPrometheusWriteRequestMetrics(ctx context.Context, request *prompb.WriteRequest, reporter Reporter) (pmetric.Metrics, error) {
 	var otelMetrics pmetric.Metrics
-	metricFamiliesAndData, err := prwParser.partitionWriteRequest(request)
+	metricFamiliesAndData, err := prwParser.partitionWriteRequest(*request)
 	if nil != err {
-		// TODO hughesjj
+		otelMetrics = prwParser.transformPrwToOtel(metricFamiliesAndData)
 	}
-	for metricFamilyName, metricData := range metricFamiliesAndData {
-		// TODO actually convert now
-		prwParser.
-	}
-
+	prwParser.Reporter.OnMetricsProcessed(ctx, otelMetrics.DataPointCount(), err)
 	return otelMetrics, nil
 }
 
@@ -52,12 +49,16 @@ type MetricData struct {
 
 type PrwOtelParser struct {
 	metricTypesCache tools.PrometheusMetricTypeCache
+	Reporter
 }
 
 const maxCachedMetadata = 10000
 
-func NewPrwOtelParser() *PrwOtelParser {
-	return &PrwOtelParser{metricTypesCache: tools.NewPrometheusMetricTypeCache(maxCachedMetadata)}
+func NewPrwOtelParser(reporter Reporter) (PrwOtelParser, error) {
+	return PrwOtelParser{
+		metricTypesCache: tools.NewPrometheusMetricTypeCache(maxCachedMetadata),
+		Reporter:         reporter,
+	}, nil
 }
 
 func getMetricNameAndFilteredLabels(labels *[]prompb.Label) (string, *[]prompb.Label) {
@@ -95,6 +96,8 @@ func getMetricTypeByLabels(labels *[]prompb.Label) prompb.MetricMetadata_MetricT
 
 	return prompb.MetricMetadata_GAUGE
 }
+
+// See https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/13bcae344506fe2169b59d213361d04094c651f6/receiver/prometheusreceiver/internal/util.go#L106
 
 func (prwParser *PrwOtelParser) partitionWriteRequest(writeReq prompb.WriteRequest) (map[string][]MetricData, error) {
 	partitions := make(map[string][]MetricData)
@@ -162,20 +165,94 @@ func getBaseMetricFamilyName(metricName string) string {
 }
 
 func (prwParser *PrwOtelParser) transformPrwToOtel(parsedPrwMetrics map[string][]MetricData) pmetric.Metrics {
+	// TODO hughesjj oooffff... so do we shove it all into one "metrics" I suppose?
 	metric := pmetric.NewMetrics()
-	metric.ResourceMetrics().AppendEmpty().Resource()
+	for metricFamily, metrics := range parsedPrwMetrics {
+		rm := metric.ResourceMetrics().AppendEmpty()
+		prwParser.addMetrics(rm, metricFamily, metrics)
+	}
 	return metric
 }
 
-func (prwParser *PrwOtelParser) addHistogram() {
+func (prwParser *PrwOtelParser) addMetrics(rm pmetric.ResourceMetrics, family string, metrics []MetricData) {
+	// TODO hughesjj refactor just getting it working for now
+	// if type is gauge then add new scope metric
 
-}
-func (prwParser *PrwOtelParser) addGauge() {
+	// TODO hughesjj cast to int if essentially int... maybe?  idk they do it in sfx.gateway
+	ilm := rm.ScopeMetrics().AppendEmpty()
+	//ilm.Scope().SetName("simpleprometheusremotewritereceiver")
+	for _, metricsData := range metrics {
+		nm := ilm.Metrics().AppendEmpty()
+		nm.SetUnit(metricsData.MetricMetadata.Unit)
+		nm.SetDescription(metricsData.MetricMetadata.GetHelp())
+		if metricsData.MetricName != "" {
+			nm.SetName(metricsData.MetricName)
+		} else {
+			nm.SetName(family)
+		}
+		switch metricType := metricsData.MetricMetadata.Type; metricType {
+		case prompb.MetricMetadata_GAUGE:
+			gauge := nm.SetEmptyGauge()
+			for _, sample := range *metricsData.Samples {
+				dp := gauge.DataPoints().AppendEmpty()
+				dp.SetDoubleValue(sample.Value)
+				dp.SetTimestamp(pcommon.Timestamp(sample.Timestamp * int64(time.Millisecond)))
+				for _, attr := range *metricsData.Labels {
+					dp.Attributes().PutStr(attr.Name, attr.Value)
+				}
+				// Fairly certain gauge is byref here
+			}
+		case prompb.MetricMetadata_COUNTER:
+			sumMetric := nm.SetEmptySum()
+			// TODO hughesjj No idea how correct this is, but scraper always sets this way.  could totally see PRW being different
+			sumMetric.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+			// TODO hughesjj No idea how correct this is, but scraper always sets this way.  could totally see PRW being different
+			sumMetric.SetIsMonotonic(true)
+			for _, sample := range *metricsData.Samples {
+				counter := nm.Sum().DataPoints().AppendEmpty()
+				counter.SetDoubleValue(sample.Value)
+				counter.SetTimestamp(pcommon.Timestamp(sample.Timestamp * int64(time.Millisecond)))
+				for _, attr := range *metricsData.Labels {
+					counter.Attributes().PutStr(attr.Name, attr.Value)
+				}
+				// Fairly certain counter is byref here
+			}
+		case prompb.MetricMetadata_HISTOGRAM:
+			histogramDps := nm.SetEmptyHistogram()
+			for _, sample := range *metricsData.Histograms {
+				dp := histogramDps.DataPoints().AppendEmpty()
+				dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+				dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+				dp.SetSum(sample.GetSum())
+				dp.SetCount(sample.GetCountInt())
+			}
+		case prompb.MetricMetadata_SUMMARY:
+			summaryDps := nm.SetEmptySummary()
 
-}
-func (prwParser *PrwOtelParser) addCounter() {
+			for _, sample := range *metricsData.Samples {
+				dp := summaryDps.DataPoints().AppendEmpty()
+				sample.Descriptor()
+				dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+				dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+				dp.SetSum(sample.GetValue())
+				dp.SetCount(uint64(sample.Size()))
+			}
 
-}
-func (prwParser *PrwOtelParser) addSummary() {
+		case prompb.MetricMetadata_INFO, prompb.MetricMetadata_STATESET:
+			// set as SUM but not monotonic
+			sumMetric := nm.SetEmptySum()
+			sumMetric.SetIsMonotonic(false)
+			sumMetric.SetAggregationTemporality(pmetric.AggregationTemporalityUnspecified)
 
+			for _, sample := range *metricsData.Samples {
+				dp := sumMetric.DataPoints().AppendEmpty()
+				dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+				dp.SetDoubleValue(sample.GetValue()) // TODO hughesjj maybe see if can be intvalue
+			}
+
+		default:
+			// unsupported so obsreport only
+		}
+
+	}
 }
