@@ -18,7 +18,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/signalfx/golib/pointer"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/consumer"
@@ -45,11 +44,11 @@ func createMetricsReceiver(
 
 func createDefaultConfig() component.Config {
 	return &Config{
+		Timeout: 30 * time.Second,
 		ListenAddr: confignet.NetAddr{
-			Endpoint:  "127.0.0.1:1234", // TODO hughesjj this.. doesn't seem right to me
+			Endpoint:  "localhost:0", // Will randomize port!
 			Transport: "tcp",
 		},
-		ListenPath: "/write",
-		Timeout:    pointer.Duration(time.Second * 30),
+		ListenPath: "/metrics",
 	}
 }

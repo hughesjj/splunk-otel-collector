@@ -16,82 +16,78 @@ package prw
 
 import (
 	"context"
-	"go.opentelemetry.io/collector/pdata/pmetric"
-	"go.uber.org/multierr"
-	"net"
 	"net/http"
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/collector/config/confignet"
+
 	"github.com/prometheus/prometheus/storage/remote"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
 type PrometheusRemoteWriteReceiver struct {
-	handler
-	net.Listener
 	*http.Server
-
+	handler
 	sync.Mutex
 }
 
-type PrwConfig struct {
-	Listener     net.Listener
-	Readtimeout  *time.Duration
-	Writetimeout *time.Duration
+type prwConfig struct {
 	Reporter     Reporter
+	Addr         confignet.NetAddr
 	Path         string
+	Readtimeout  time.Duration
+	Writetimeout time.Duration
 }
 
-func NewPrometheusRemoteWriteReceiver(ctx context.Context, config PrwConfig, mc chan pmetric.Metrics) (*PrometheusRemoteWriteReceiver, error) {
+func NewPrwConfig(address confignet.NetAddr, path string, timeout time.Duration, reporter Reporter) *prwConfig {
+
+	return &prwConfig{
+		Addr:         address,
+		Readtimeout:  timeout,
+		Writetimeout: timeout,
+		Reporter:     reporter,
+		Path:         path,
+	}
+}
+
+func NewPrometheusRemoteWriteReceiver(ctx context.Context, config prwConfig, mc chan pmetric.Metrics) (*PrometheusRemoteWriteReceiver, error) {
 	parser, err := NewPrwOtelParser(config.Reporter)
 	if nil != err {
 		return nil, err
 	}
 	handler := newHandler(ctx, &parser, config.Reporter, config.Path, mc)
-	// TODO hughesjj use mux instead
-	//address := config.Listener.Addr().String()
-	//http.List()
 	server := http.Server{
 		Handler:      handler,
-		Addr:         config.Listener.Addr().String(),
-		ReadTimeout:  *config.Readtimeout,
-		WriteTimeout: *config.Writetimeout,
+		Addr:         config.Addr.Endpoint,
+		ReadTimeout:  config.Readtimeout,
+		WriteTimeout: config.Writetimeout,
 	}
 	return &PrometheusRemoteWriteReceiver{
-		handler:  *handler,
-		Listener: config.Listener,
-		Server:   &server,
+		handler: *handler,
+		Server:  &server,
 	}, nil
 }
 
 func (prw *PrometheusRemoteWriteReceiver) Close() error {
-	prw.Lock()
-	defer prw.Unlock()
-	serverErr := prw.Server.Close()
-	protocolErr := prw.Listener.Close()
-	if serverErr != nil && protocolErr != nil {
-		return multierr.Combine(serverErr, protocolErr)
-	}
-	if serverErr != nil {
-		return serverErr
-	}
-
-	return nil
+	//prw.Lock()
+	//defer prw.Unlock()
+	return prw.Server.Close()
 }
 
 func (prw *PrometheusRemoteWriteReceiver) ListenAndServe() error {
-	prw.Lock()
-	defer prw.Unlock()
-	err := prw.Server.ListenAndServe()
-	return err
+	//prw.Lock()
+	//defer prw.Unlock()
+	prw.reporter.OnDebugf("Starting prometheus simple write server")
+	return prw.Server.ListenAndServe()
 }
 
 type handler struct {
-	ctx      context.Context
-	path     string
 	parser   PrwOtelParser
+	ctx      context.Context
 	reporter Reporter
 	mc       chan pmetric.Metrics
+	path     string
 }
 
 func newHandler(ctx context.Context, parser *PrwOtelParser, reporter Reporter, path string, mc chan pmetric.Metrics) *handler {

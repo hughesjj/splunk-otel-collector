@@ -16,6 +16,7 @@ package prw
 
 import (
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -34,22 +35,23 @@ func NewMockReporter(expectedOnMetricsProcessedCalls int) *MockReporter {
 	return &m
 }
 
-func (m *MockReporter) OnDataReceived(ctx context.Context) context.Context {
+func (m MockReporter) OnDataReceived(ctx context.Context) context.Context {
 	return ctx
 }
 
-func (m *MockReporter) OnTranslationError(ctx context.Context, err error) {
+func (m MockReporter) OnTranslationError(ctx context.Context, err error) {
 }
 
-func (m *MockReporter) OnMetricsProcessed(ctx context.Context, numReceivedMessages int, err error) {
+func (m MockReporter) OnMetricsProcessed(ctx context.Context, numReceivedMessages int, err error) {
 	m.wgMetricsProcessed.Done()
 }
 
-func (m *MockReporter) OnDebugf(template string, args ...interface{}) {
+func (m MockReporter) OnDebugf(template string, args ...interface{}) {
+	fmt.Println(fmt.Sprintf(template, args...))
 }
 
 // WaitAllOnMetricsProcessedCalls blocks until the number of expected calls
 // specified at creation of the reporter is completed.
-func (m *MockReporter) WaitAllOnMetricsProcessedCalls() {
+func (m MockReporter) WaitAllOnMetricsProcessedCalls() {
 	m.wgMetricsProcessed.Wait()
 }

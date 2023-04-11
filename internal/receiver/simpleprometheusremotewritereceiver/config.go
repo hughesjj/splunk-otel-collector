@@ -15,25 +15,23 @@
 package simpleprometheusremotewritereceiver
 
 import (
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
 	"time"
+
+	"go.opentelemetry.io/collector/component"
+
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
 
 	"go.opentelemetry.io/collector/config/confignet"
 )
+
+var _ component.Config = (*Config)(nil)
 
 const (
 	typeString = tools.TypeStr
 )
 
 type Config struct {
-	// Needs address, path, timeout.  This is from SFX impl but we should prolly change it
 	ListenAddr confignet.NetAddr `mapstructure:",squash"`
 	ListenPath string            `mapstructure:",squash"`
-	Timeout    *time.Duration    `mapstructure:",squash"`
-}
-
-func (c *Config) Validate() error {
-	var errs error
-	// TODO hughesjj impl validation
-	return errs
+	Timeout    time.Duration     `mapstructure:",squash"`
 }

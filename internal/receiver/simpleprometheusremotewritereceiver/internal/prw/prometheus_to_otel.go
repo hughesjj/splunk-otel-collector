@@ -16,10 +16,12 @@ package prw
 
 import (
 	"context"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/collector/pdata/pcommon"
+
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
 
 	"github.com/prometheus/prometheus/prompb"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -36,13 +38,13 @@ func (prwParser *PrwOtelParser) FromPrometheusWriteRequestMetrics(ctx context.Co
 }
 
 type MetricData struct {
-	MetricMetadata   prompb.MetricMetadata
-	MetricFamilyName string
-	MetricName       string
 	Labels           *[]prompb.Label
 	Samples          *[]prompb.Sample
 	Exemplars        *[]prompb.Exemplar
 	Histograms       *[]prompb.Histogram
+	MetricFamilyName string
+	MetricName       string
+	MetricMetadata   prompb.MetricMetadata
 }
 
 type PrwOtelParser struct {

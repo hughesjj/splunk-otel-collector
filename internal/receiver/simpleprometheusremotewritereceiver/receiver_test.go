@@ -1,4 +1,4 @@
-// Copyright 2020, OpenTelemetry Authors
+// Copyright Splunk, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,41 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package prw
+package simpleprometheusremotewritereceiver
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/collector/config/confignet"
-
 	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/receiver"
 )
 
-func TestSmoke(t *testing.T) {
-	mc := make(chan pmetric.Metrics)
-	timeout := 5 * time.Second
-	addr := confignet.NetAddr{
-		Endpoint:  "localhost:0",
-		Transport: "tcp",
-	}
-	reporter := NewMockReporter(0)
-	cfg := NewPrwConfig(
-		addr,
-		"/metrics",
-		timeout,
-		reporter,
-	)
+func TestHappy(t *testing.T) {
+	timeout := time.Minute
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	receiver, err := NewPrometheusRemoteWriteReceiver(ctx, *cfg, mc)
-	assert.NotNil(t, receiver)
+	cfg := createDefaultConfig().(*Config)
+	cfg.ListenAddr.Endpoint = "localhost:0"
+	var mockSettings receiver.CreateSettings
+	var mockConsumer consumer.Metrics
+	var host component.Host
+	rec, err := createMetricsReceiver(ctx, mockSettings, cfg, mockConsumer)
+	assert.NotNil(t, rec)
 	assert.Nil(t, err)
 
 	go func() {
-		assert.Nil(t, receiver.ListenAndServe())
+		assert.Nil(t, rec.Start(ctx, host))
 	}()
 
 	select {

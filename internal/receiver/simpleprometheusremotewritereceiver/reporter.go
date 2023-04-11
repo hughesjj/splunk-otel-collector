@@ -16,6 +16,7 @@ package simpleprometheusremotewritereceiver
 
 import (
 	"context"
+
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
 

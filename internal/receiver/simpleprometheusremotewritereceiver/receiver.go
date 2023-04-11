@@ -17,13 +17,15 @@ package simpleprometheusremotewritereceiver
 import (
 	"context"
 	"errors"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
+	"net"
+	"sync"
+
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
-	"net"
-	"sync"
+
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
 )
 
 // TODO hughesjj wait why is this a thing?
@@ -31,14 +33,12 @@ var _ receiver.Metrics = (*simplePrometheusWriteReceiver)(nil)
 
 // simplePrometheusWriteReceiver implements the receiver.Metrics for PrometheusRemoteWrite protocol.
 type simplePrometheusWriteReceiver struct {
-	settings receiver.CreateSettings
-	config   Config
-
 	server       prw.Server
 	reporter     prw.Reporter
 	nextConsumer consumer.Metrics
 	cancel       context.CancelFunc
-
+	settings     receiver.CreateSettings
+	config       Config
 	sync.Mutex
 }
 
@@ -68,19 +68,18 @@ func New(
 func (r *simplePrometheusWriteReceiver) buildTransportServer(ctx context.Context, metrics chan pmetric.Metrics) (prw.Server, error) {
 	listener, err := net.Listen(r.config.ListenAddr.Transport, r.config.ListenAddr.Endpoint)
 	defer listener.Close()
-	cfg := prw.PrwConfig{
-		Listener:     listener,
-		Reporter:     r.reporter,
-		Path:         r.config.ListenPath,
-		Readtimeout:  r.config.Timeout,
-		Writetimeout: r.config.Timeout,
-	}
-	server, err := prw.NewPrometheusRemoteWriteReceiver(ctx, cfg, metrics)
+	cfg := prw.NewPrwConfig(
+		r.config.ListenAddr,
+		r.config.ListenPath,
+		r.config.Timeout,
+		r.reporter,
+	)
+	server, err := prw.NewPrometheusRemoteWriteReceiver(ctx, *cfg, metrics)
 	return server, err
 
 }
 
-// Start starts a UDP server that can process StatsD messages.
+// Start starts an HTTP server that can process Prometheus Remote Write Requests
 func (r *simplePrometheusWriteReceiver) Start(ctx context.Context, host component.Host) error {
 	metricsChannel := make(chan pmetric.Metrics, 10)
 	ctx, r.cancel = context.WithCancel(ctx)
