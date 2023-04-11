@@ -1,17 +1,3 @@
-// Copyright Splunk, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package simpleprometheusremotewritereceiver
 
 import (
@@ -20,32 +6,16 @@ import (
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/testdata"
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver/receivertest"
-	"net"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func getFreePort() (int, error) {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-	if err != nil {
-		return 0, err
-	}
-
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
-}
-
-func TestHappy(t *testing.T) {
+func TestFactory(t *testing.T) {
 	timeout := time.Minute
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -71,10 +41,8 @@ func TestHappy(t *testing.T) {
 	prwReceiver.reporter = mockReporter
 
 	assert.Nil(t, err)
-	require.NotNil(t, prwReceiver)
-	require.Nil(t, prwReceiver.Start(ctx, nopHost))
-
-	//prwReceiver.Flush(ctx)
+	require.NotNil(t, receiver)
+	require.Nil(t, receiver.Start(ctx, nopHost))
 
 	// Send some metrics
 	client := transport.MockPrwClient{
@@ -97,7 +65,7 @@ func TestHappy(t *testing.T) {
 	select {
 	case <-time.After(closeAfter):
 		t.Logf("Closing at %d!", time.Now().Unix())
-		require.Nil(t, prwReceiver.Shutdown(ctx))
+		require.Nil(t, receiver.Shutdown(ctx))
 	case <-time.After(timeout + 2*time.Second):
 		require.Fail(t, "Should have closed server by now")
 	case <-ctx.Done():

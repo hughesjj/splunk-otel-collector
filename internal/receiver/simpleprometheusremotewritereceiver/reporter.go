@@ -16,8 +16,8 @@ package simpleprometheusremotewritereceiver
 
 import (
 	"context"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
 
 	"go.opencensus.io/trace"
@@ -34,18 +34,18 @@ type reporter struct {
 	obsrecv       *obsreport.Receiver
 }
 
-func newReporter(set receiver.CreateSettings) (prw.Reporter, error) {
+func newReporter(settings receiver.CreateSettings) (transport.Reporter, error) {
 	obsrecv, err := obsreport.NewReceiver(obsreport.ReceiverSettings{
-		ReceiverID:             set.ID,
+		ReceiverID:             settings.ID,
 		Transport:              "tcp",
-		ReceiverCreateSettings: set,
+		ReceiverCreateSettings: settings,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &reporter{
-		logger:        set.Logger,
-		sugaredLogger: set.Logger.Sugar(),
+		logger:        settings.Logger,
+		sugaredLogger: settings.Logger.Sugar(),
 		obsrecv:       obsrecv,
 	}, nil
 }

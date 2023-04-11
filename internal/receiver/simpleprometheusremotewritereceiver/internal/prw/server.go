@@ -16,6 +16,7 @@ package prw
 
 import (
 	"context"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 	"net/http"
 	"sync"
 	"time"
@@ -33,14 +34,14 @@ type PrometheusRemoteWriteReceiver struct {
 }
 
 type prwConfig struct {
-	Reporter     Reporter
+	Reporter     transport.Reporter
 	Addr         confignet.NetAddr
 	Path         string
 	Readtimeout  time.Duration
 	Writetimeout time.Duration
 }
 
-func NewPrwConfig(address confignet.NetAddr, path string, timeout time.Duration, reporter Reporter) *prwConfig {
+func NewPrwConfig(address confignet.NetAddr, path string, timeout time.Duration, reporter transport.Reporter) *prwConfig {
 
 	return &prwConfig{
 		Addr:         address,
@@ -85,12 +86,12 @@ func (prw *PrometheusRemoteWriteReceiver) ListenAndServe() error {
 type handler struct {
 	parser   PrwOtelParser
 	ctx      context.Context
-	reporter Reporter
+	reporter transport.Reporter
 	mc       chan pmetric.Metrics
 	path     string
 }
 
-func newHandler(ctx context.Context, parser *PrwOtelParser, reporter Reporter, path string, mc chan pmetric.Metrics) *handler {
+func newHandler(ctx context.Context, parser *PrwOtelParser, reporter transport.Reporter, path string, mc chan pmetric.Metrics) *handler {
 	return &handler{
 		ctx:      ctx,
 		path:     path,

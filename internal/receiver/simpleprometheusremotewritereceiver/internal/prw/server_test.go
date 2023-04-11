@@ -16,6 +16,7 @@ package prw
 
 import (
 	"context"
+	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 
@@ -42,16 +43,22 @@ func TestSmoke(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	receiver, err := NewPrometheusRemoteWriteReceiver(ctx, *cfg, mc)
-	assert.NotNil(t, receiver)
 	assert.Nil(t, err)
+	require.NotNil(t, receiver)
 
 	go func() {
 		assert.Nil(t, receiver.ListenAndServe())
 	}()
 
+	closeAfter := 20 * time.Second
+	t.Logf("will close after %d seconds, starting at %d", closeAfter/time.Second, time.Now().Unix())
+
 	select {
+	case <-time.After(closeAfter):
+		t.Logf("Closed at %d!", time.Now().Unix())
+		require.Nil(t, receiver.Shutdown(ctx))
 	case <-time.After(timeout + 2*time.Second):
-		assert.Fail(t, "Should have closed server by now")
+		require.Fail(t, "Should have closed server by now")
 	case <-ctx.Done():
 		assert.Error(t, ctx.Err())
 	}

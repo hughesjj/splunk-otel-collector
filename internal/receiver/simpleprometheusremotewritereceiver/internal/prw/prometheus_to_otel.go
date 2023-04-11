@@ -16,6 +16,7 @@ package prw
 
 import (
 	"context"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 	"strings"
 	"time"
 
@@ -27,7 +28,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
-func (prwParser *PrwOtelParser) FromPrometheusWriteRequestMetrics(ctx context.Context, request *prompb.WriteRequest, reporter Reporter) (pmetric.Metrics, error) {
+func (prwParser *PrwOtelParser) FromPrometheusWriteRequestMetrics(ctx context.Context, request *prompb.WriteRequest, reporter transport.Reporter) (pmetric.Metrics, error) {
 	var otelMetrics pmetric.Metrics
 	metricFamiliesAndData, err := prwParser.partitionWriteRequest(*request)
 	if nil != err {
@@ -49,12 +50,12 @@ type MetricData struct {
 
 type PrwOtelParser struct {
 	metricTypesCache *tools.PrometheusMetricTypeCache
-	Reporter         Reporter
+	Reporter         transport.Reporter
 }
 
 const maxCachedMetadata = 10000
 
-func NewPrwOtelParser(reporter Reporter) (PrwOtelParser, error) {
+func NewPrwOtelParser(reporter transport.Reporter) (PrwOtelParser, error) {
 	return PrwOtelParser{
 		metricTypesCache: tools.NewPrometheusMetricTypeCache(maxCachedMetadata),
 		Reporter:         reporter,
@@ -77,7 +78,7 @@ func getMetricNameAndFilteredLabels(labels *[]prompb.Label) (string, *[]prompb.L
 }
 
 func getMetricTypeByLabels(labels *[]prompb.Label) prompb.MetricMetadata_MetricType {
-	// TODO actually assign the slice?
+	// TODO hughesjj actually assign the slice?
 	metricName, _ := getMetricNameAndFilteredLabels(labels)
 
 	if strings.HasSuffix(metricName, "_total") || strings.HasSuffix(metricName, "_count") || strings.HasSuffix(metricName, "_counter") {
@@ -93,7 +94,7 @@ func getMetricTypeByLabels(labels *[]prompb.Label) prompb.MetricMetadata_MetricT
 			return prompb.MetricMetadata_SUMMARY
 		}
 	}
-
+	// TODO hughesjj okay should we ever return unknown?
 	return prompb.MetricMetadata_GAUGE
 }
 
@@ -119,7 +120,11 @@ func (prwParser *PrwOtelParser) partitionWriteRequest(writeReq prompb.WriteReque
 		metricMetadata, ok := prwParser.metricTypesCache.Get(metricName)
 		if !ok {
 			metricType := getMetricTypeByLabels(&ts.Labels)
-			metricMetadata, ok = prwParser.metricTypesCache.AddHeuristic(metricName, prompb.MetricMetadata{Type: metricType})
+			metricMetadata, ok = prwParser.metricTypesCache.AddHeuristic(metricName, prompb.MetricMetadata{
+				// TODO gotta add unit and help too I think?
+				MetricFamilyName: metricFamilyName,
+				Type:             metricType,
+			})
 		}
 
 		// Add the parsed time-series data to the corresponding partition
@@ -180,6 +185,7 @@ func (prwParser *PrwOtelParser) addMetrics(rm pmetric.ResourceMetrics, family st
 
 	// TODO hughesjj cast to int if essentially int... maybe?  idk they do it in sfx.gateway
 	ilm := rm.ScopeMetrics().AppendEmpty()
+	// TODO hughesjj should I set typeStr here?
 	//ilm.Scope().SetName("simpleprometheusremotewritereceiver")
 	for _, metricsData := range metrics {
 		nm := ilm.Metrics().AppendEmpty()
@@ -252,6 +258,8 @@ func (prwParser *PrwOtelParser) addMetrics(rm pmetric.ResourceMetrics, family st
 
 		default:
 			// unsupported so obsreport only
+			//prwParser.Reporter.OnTranslationError(prwParser.con)
+			// TODO hughesjj figure out how to better obs report stuff
 		}
 
 	}

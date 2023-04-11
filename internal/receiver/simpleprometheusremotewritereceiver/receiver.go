@@ -17,6 +17,7 @@ package simpleprometheusremotewritereceiver
 import (
 	"context"
 	"errors"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 	"net"
 	"sync"
 
@@ -33,8 +34,8 @@ var _ receiver.Metrics = (*simplePrometheusWriteReceiver)(nil)
 
 // simplePrometheusWriteReceiver implements the receiver.Metrics for PrometheusRemoteWrite protocol.
 type simplePrometheusWriteReceiver struct {
-	server       prw.Server
-	reporter     prw.Reporter
+	server       transport.Server
+	reporter     transport.Reporter
 	nextConsumer consumer.Metrics
 	cancel       context.CancelFunc
 	settings     receiver.CreateSettings
@@ -65,7 +66,7 @@ func New(
 	}
 	return r, nil
 }
-func (r *simplePrometheusWriteReceiver) buildTransportServer(ctx context.Context, metrics chan pmetric.Metrics) (prw.Server, error) {
+func (r *simplePrometheusWriteReceiver) buildTransportServer(ctx context.Context, metrics chan pmetric.Metrics) (transport.Server, error) {
 	listener, err := net.Listen(r.config.ListenAddr.Transport, r.config.ListenAddr.Endpoint)
 	defer listener.Close()
 	cfg := prw.NewPrwConfig(
@@ -129,14 +130,15 @@ func (r *simplePrometheusWriteReceiver) Shutdown(context.Context) error {
 	defer r.Unlock()
 	if r.cancel == nil {
 		return nil
+	} else {
+		defer r.cancel()
 	}
-	err := r.server.Close()
-	r.cancel()
-	return err
+	return r.server.Close()
 }
 
 func (r *simplePrometheusWriteReceiver) Flush(ctx context.Context, metrics pmetric.Metrics) error {
 	err := r.nextConsumer.ConsumeMetrics(ctx, metrics)
 	r.reporter.OnMetricsProcessed(ctx, metrics.DataPointCount(), err)
+	panic("cool at least we're getting stuff")
 	return err
 }
