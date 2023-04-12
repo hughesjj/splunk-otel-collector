@@ -876,7 +876,6 @@ github.com/gophercloud/gophercloud v1.1.1 h1:MuGyqbSxiuVBqkPZ3+Nhbytk1xZxhmfCB2R
 github.com/gophercloud/gophercloud v1.1.1/go.mod h1:aAVqcocTSXh2vYFZ1JTvx4EQmfgzxRcNupUfxZbBNDM=
 github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1/go.mod h1:wJfORRmW1u3UXTncJ5qlYoELFm8eSnnEO6hX4iZ3EWY=
 github.com/gopherjs/gopherjs v0.0.0-20181103185306-d547d1d9531e h1:JKmoR8x90Iww1ks85zJ1lfDGgIiMDuIptTOhJq+zKyg=
-github.com/gopherjs/gopherjs v0.0.0-20181103185306-d547d1d9531e/go.mod h1:wJfORRmW1u3UXTncJ5qlYoELFm8eSnnEO6hX4iZ3EWY=
 github.com/gordonklaus/ineffassign v0.0.0-20210225214923-2e10b2664254/go.mod h1:M9mZEtGIsR1oDaZagNPNG9iq9n2HrhZ17dsXk73V3Lw=
 github.com/gorilla/context v1.1.1/go.mod h1:kBGZzfjB9CEq2AlWe17Uuf7NDRt0dE0s8S51q0aT7Yg=
 github.com/gorilla/handlers v1.5.1 h1:9lRY6j8DEeeBT10CvO9hGW0gmky0BprnvDI5vfhUHH4=
@@ -1481,7 +1480,6 @@ github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter 
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter v0.74.0 h1:MrVOfBTNBe4n/daZjV4yvHZRR0Jg/MOCl/mNwymHwDM=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/kafkaexporter v0.74.0/go.mod h1:v4H2ATSrKfOTbQnmjCxpvuOjrO/GUURAgey9RzrPsuQ=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.74.0 h1:1DwD5J3voytfldOYEbi8TpO98KwT+tY1u1hXfqBcjHQ=
-github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.74.0/go.mod h1:RcR/iLnL0wbVJR0EGzB3JgEauIIPmN/LiydHgXWA9C0=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/sapmexporter v0.74.0 h1:5MRM8lJuULoYnxH/92xTTPI+3ezeeEhDunMX3bn2cJM=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/sapmexporter v0.74.0/go.mod h1:OjulcAXqS47wsU2YTuqevv8aVBRaDi8YiwlhvhRuaYs=
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/signalfxexporter v0.74.0 h1:itIZ2VhCBCuAlDbE/lVKb9Q7Fvi7r/ziio1y1kMWVrs=
@@ -1542,7 +1540,6 @@ github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest v0.74.0/
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.74.0 h1:9zWdiR9+bem0LvvWWoMZU6R3xTmu0WbcAPe8kI/jpyk=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.74.0/go.mod h1:3RViz8fguswWAFR+8W2Kzmch3eecOVK935QVsBdpUk4=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.74.0 h1:HQGFpz3olAA1AGH1AgVKV2dygf9QGyQF7cwTMFDdthI=
-github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.74.0/go.mod h1:Nw7FXUNb5aKbHxdJvXPOh382a9P0dTKfsrIv4ZIXjig=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.74.0 h1:d8X4cr/yTATsuh+uzTwBU9GSutnJ3Pvs0dW2yBKku8k=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.74.0/go.mod h1:ufE3zuV9DLPPheSx0ylAZ1dOTXYEb8E3mPzOf+/qZ0A=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.52.0/go.mod h1:tU7s/ki/QePSIZ7ExYGWLMb9erCAt66brQHBEHxr8HU=
@@ -1555,7 +1552,6 @@ github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/opencen
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.74.0 h1:KaNIB5+iuKpTxFcOKP7NEnxXcEi16dFQSkfeZBgUgQc=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.74.0/go.mod h1:wglIjSJcaZjTZwC21Aiem0lYWPRpQ9ta7ntzT2roLSY=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheusremotewrite v0.74.0 h1:/ZhZsv9t8p7Gbn/T00rf3e9v1uYieRL4luJ5QG8fxPQ=
-github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheusremotewrite v0.74.0/go.mod h1:1bDXfyMUXng8/6g7ZbFCClw54dBWE639rPDYm3zEE8s=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/signalfx v0.74.0 h1:fGePy9ohPOnk3fv2tF30M5DgWZhDnx/w0G1nLf9qAzs=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/signalfx v0.74.0/go.mod h1:1/CMA6iGSwW3nHuIHCaTcLDFm8b60IRW2iYVKQ/+aLw=
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/zipkin v0.74.0 h1:A5xoBaMHX1WzLfvlqK6NBXq4XIbuSVJIpec5r6PDE7U=
@@ -1912,12 +1908,9 @@ github.com/sirupsen/logrus v1.8.1/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic
 github.com/sirupsen/logrus v1.9.0 h1:trlNQbNUG3OdDrDil03MCb1H2o9nJ1x4/5LYw7byDE0=
 github.com/sirupsen/logrus v1.9.0/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
 github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d/go.mod h1:OnSkiWE9lh6wB0YB77sQom3nweQdgAjqCqsofrRNTgc=
-github.com/smartystreets/assertions v1.2.0/go.mod h1:tcbTF8ujkAEcZ8TElKY+i30BzYlVhC/LOxJk7iOWnoo=
 github.com/smartystreets/assertions v1.13.0 h1:Dx1kYM01xsSqKPno3aqLnrwac2LetPvN23diwyr69Qs=
-github.com/smartystreets/assertions v1.13.0/go.mod h1:wDmR7qL282YbGsPy6H/yAsesrxfxaaSlJazyFLYVFx8=
 github.com/smartystreets/goconvey v1.6.4/go.mod h1:syvi0/a8iFYH4r/RixwvyeAJjdLS9QV7WQ/tjFTllLA=
 github.com/smartystreets/goconvey v1.7.2 h1:9RBaZCeXEQ3UselpuwUQHltGVXvdwm6cv1hgR6gDIPg=
-github.com/smartystreets/goconvey v1.7.2/go.mod h1:Vw0tHAZW6lzCRk3xgdin6fKYcG+G3Pg9vgXWeJpQFMM=
 github.com/snowflakedb/gosnowflake v1.6.19 h1:KSHXrQ5o7uso25hNIzi/RObXtnSGkFgie91X82KcvMY=
 github.com/snowflakedb/gosnowflake v1.6.19/go.mod h1:FM1+PWUdwB9udFDsXdfD58NONC0m+MlOSmQRvimobSM=
 github.com/softlayer/softlayer-go v0.0.0-20180806151055-260589d94c7d h1:bVQRCxQvfjNUeRqaY/uT0tFuvuFY0ulgnczuR684Xic=
@@ -2007,9 +2000,7 @@ github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhV
 github.com/tidwall/pretty v1.2.0 h1:RWIZEg2iJ8/g6fDDYzMpobmaoGh5OLl4AXtGUGPcqCs=
 github.com/tidwall/pretty v1.2.0/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
 github.com/tidwall/tinylru v1.1.0 h1:XY6IUfzVTU9rpwdhKUF6nQdChgCdGjkMfLzbWyiau6I=
-github.com/tidwall/tinylru v1.1.0/go.mod h1:3+bX+TJ2baOLMWTnlyNWHh4QMnFyARg2TLTQ6OFbzw8=
 github.com/tidwall/wal v1.1.7 h1:emc1TRjIVsdKKSnpwGBAcsAGg0767SvUk8+ygx7Bb+4=
-github.com/tidwall/wal v1.1.7/go.mod h1:r6lR1j27W9EPalgHiB7zLJDYu3mzW5BQP5KrzBpYY/E=
 github.com/tilinna/clock v1.1.0 h1:6IQQQCo6KoBxVudv6gwtY8o4eDfhHo8ojA5dP0MfhSs=
 github.com/tilinna/clock v1.1.0/go.mod h1:ZsP7BcY7sEEz7ktc0IVy8Us6boDrK8VradlKRUGfOao=
 github.com/timakin/bodyclose v0.0.0-20200424151742-cb6215831a94/go.mod h1:Qimiffbc6q9tBWlVV6x0P9sat/ao1xEkREYPPj9hphk=

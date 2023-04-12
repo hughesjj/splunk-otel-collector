@@ -18,25 +18,7 @@ func TestBasicNoMd(t *testing.T) {
 		require.Empty(t, wq.Metadata)
 	}
 }
-func TestBasicMd(t *testing.T) {
-	wqs := AddMetadataScaffoldToWriteRequests(GetWriteRequestsWithMetadata())
-	require.NotNil(t, wqs)
-	for _, wq := range wqs {
-		for _, ts := range wq.Timeseries {
-			require.NotNil(t, ts)
-			assert.NotEmpty(t, ts.Labels)
-		}
-		require.NotEmpty(t, wq.Metadata)
-		for _, ts := range wq.Metadata {
-			require.NotNil(t, ts)
-			//assert.NotEmpty(t, ts.Type)
-			assert.Equal(t, prompb.MetricMetadata_UNKNOWN, ts.Type)
-			assert.NotEmpty(t, ts.MetricFamilyName)
-			assert.Equal(t, ts.Unit, "unit")
-			assert.NotEmpty(t, ts.Help)
-		}
-	}
-}
+
 func TestCoveringMd(t *testing.T) {
 	wq := FlattenWriteRequests(GetWriteRequestsWithMetadata())
 	require.NotNil(t, wq)

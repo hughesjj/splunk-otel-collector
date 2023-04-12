@@ -127,10 +127,10 @@ func GetWriteRequests() []*prompb.WriteRequest {
 	return sampleWriteRequestsNoMetadata
 }
 
-func AddMetadataScaffoldToWriteRequests(writeRequests []*prompb.WriteRequest) []*prompb.WriteRequest {
+func AddMetadataScaffoldToWriteRequests(writeRequests []*prompb.WriteRequest, types []prompb.MetricMetadata_MetricType) []*prompb.WriteRequest {
 	var writeRequestsWithMetadata []*prompb.WriteRequest
 
-	for _, wr := range writeRequests {
+	for index, wr := range writeRequests {
 		// Create a new WriteRequest with the same Timeseries as the original WriteRequest.
 		newWr := &prompb.WriteRequest{
 			Timeseries: wr.Timeseries,
@@ -151,9 +151,10 @@ func AddMetadataScaffoldToWriteRequests(writeRequests []*prompb.WriteRequest) []
 			name = tools.GetBaseMetricFamilyName(name)
 			md := prompb.MetricMetadata{
 				MetricFamilyName: name,
-				Type:             prompb.MetricMetadata_UNKNOWN,
-				Help:             fmt.Sprintf("Help text for %s", name),
-				Unit:             "unit",
+				//Type:             prompb.MetricMetadata_UNKNOWN,
+				Type: types[index],
+				Help: fmt.Sprintf("Help text for %s", name),
+				Unit: "unit",
 			}
 			newWr.Metadata = append(
 				newWr.Metadata,
@@ -169,28 +170,31 @@ func AddMetadataScaffoldToWriteRequests(writeRequests []*prompb.WriteRequest) []
 
 func GetWriteRequestsWithMetadata() []*prompb.WriteRequest {
 	wrq := GetWriteRequests()
-	wrqMd := AddMetadataScaffoldToWriteRequests(wrq)
+	wrqMd := AddMetadataScaffoldToWriteRequests(wrq, []prompb.MetricMetadata_MetricType{
+		prompb.MetricMetadata_COUNTER, prompb.MetricMetadata_GAUGE, prompb.MetricMetadata_HISTOGRAM, prompb.MetricMetadata_SUMMARY,
+	})
 	// Counter, Gauge, Histogram, Summary
 	// While the rest may be sentinels, we should really fix any metric types where possible
-	for _, wq := range wrqMd {
-		var mdType prompb.MetricMetadata_MetricType
-		switch &wq.Timeseries {
-		case &sampleSummaryTs:
-			mdType = prompb.MetricMetadata_SUMMARY
-		case &sampleCounterTs:
-			mdType = prompb.MetricMetadata_COUNTER
-		case &sampleHistogramTs:
-			mdType = prompb.MetricMetadata_HISTOGRAM
-		case &sampleGaugeTs:
-			mdType = prompb.MetricMetadata_GAUGE
-		default:
-			mdType = prompb.MetricMetadata_UNKNOWN
-		}
-
-		for _, md := range wq.Metadata {
-			md.Type = mdType
-		}
-	}
+	//for _, wq := range wrqMd {
+	//	var mdType prompb.MetricMetadata_MetricType
+	//	// lol alright this doesn't work does it
+	//	// TODO hughesjj lol figure out how to actually test this
+	//	switch &wq.Timeseries {
+	//	case &sampleSummaryTs:
+	//		mdType = prompb.MetricMetadata_SUMMARY
+	//	case &sampleCounterTs:
+	//		mdType = prompb.MetricMetadata_COUNTER
+	//	case &sampleHistogramTs:
+	//		mdType = prompb.MetricMetadata_HISTOGRAM
+	//	case &sampleGaugeTs:
+	//		mdType = prompb.MetricMetadata_GAUGE
+	//	default:
+	//		mdType = prompb.MetricMetadata_UNKNOWN
+	//	}
+	//	for _, md := range wq.Metadata {
+	//		md.Type = mdType
+	//	}
+	//}
 	return wrqMd
 }
 
