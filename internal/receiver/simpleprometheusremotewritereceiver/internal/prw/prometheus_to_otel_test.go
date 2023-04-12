@@ -29,22 +29,14 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 	parser, err := NewPrwOtelParser(reporter)
 	require.Nil(t, err)
 
-	//var sampleMetadata []prompb.MetricMetadata
-	//sampleMetadata = append(sampleMetadata, prompb.MetricMetadata{
-	//	MetricFamilyName: "foo",
-	//})
-
-	//sampleWriteRequest := prompb.WriteRequest{
-	//	Metadata: sampleMetadata,
-	//}
 	sampleWriteRequests := testdata.GetWriteRequests()
 	for _, sampleWriteRequest := range sampleWriteRequests {
 		partitions, err := parser.partitionWriteRequest(*sampleWriteRequest)
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
-				mfn := getBaseMetricFamilyName(key)
-				assert.Equal(t, md.MetricFamilyName, mfn)
+				assert.NotEmpty(t, key)
+				assert.Equal(t, md.MetricFamilyName, key)
 			}
 		}
 	}
@@ -54,9 +46,90 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
-				mfn := getBaseMetricFamilyName(key)
-				assert.Equal(t, md.MetricMetadata.MetricFamilyName, mfn)
+				assert.Equal(t, md.MetricMetadata.MetricFamilyName, key)
 			}
 		}
 	}
+}
+
+func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
+	expectedCalls := 1
+	reporter := NewMockReporter(expectedCalls)
+	require.NotNil(t, reporter)
+	parser, err := NewPrwOtelParser(reporter)
+	require.Nil(t, err)
+
+	sampleWriteRequests := testdata.GetWriteRequests()
+	for _, sampleWriteRequest := range sampleWriteRequests {
+		partitions, err := parser.partitionWriteRequest(*sampleWriteRequest)
+		require.NoError(t, err)
+		for key, partition := range partitions {
+			for _, md := range partition {
+				assert.NotEmpty(t, key)
+				assert.Equal(t, md.MetricFamilyName, key)
+			}
+		}
+	}
+	sampleWriteRequestsMd := testdata.GetWriteRequestsWithMetadata()
+	for _, sampleWriteRequest := range sampleWriteRequestsMd {
+		partitions, err := parser.partitionWriteRequest(*sampleWriteRequest)
+		require.NoError(t, err)
+		for key, partition := range partitions {
+			for _, md := range partition {
+				assert.Equal(t, md.MetricMetadata.MetricFamilyName, key)
+			}
+		}
+		results, err := parser.TransformPrwToOtel(partitions)
+		assert.Nil(t, err)
+		assert.NotNil(t, results)
+	}
+}
+
+func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
+	expectedCalls := 1
+	reporter := NewMockReporter(expectedCalls)
+	require.NotNil(t, reporter)
+	parser, err := NewPrwOtelParser(reporter)
+	require.Nil(t, err)
+
+	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())
+	noMdPartitions, err := parser.partitionWriteRequest(*sampleWriteRequests)
+	require.NoError(t, err)
+	var noMdMd []MetricData
+	for key, partition := range noMdPartitions {
+		for _, md := range partition {
+			assert.Equal(t, key, md.MetricFamilyName)
+			assert.Equal(t, md.MetricMetadata.MetricFamilyName, key)
+			noMdMd = append(noMdMd, md)
+			assert.Equal(t, md.MetricMetadata.MetricFamilyName, key)
+			assert.NotEmpty(t, md.MetricMetadata.Type)
+			assert.NotEmpty(t, md.MetricMetadata.MetricFamilyName)
+			// Help and Unit should only exist for things with metadata
+			assert.Empty(t, md.MetricMetadata.Unit)
+			assert.Empty(t, md.MetricMetadata.Help)
+		}
+	}
+
+	sampleWriteRequestsMd := testdata.FlattenWriteRequests(testdata.GetWriteRequestsWithMetadata())
+	mdPartitions, err := parser.partitionWriteRequest(*sampleWriteRequestsMd)
+	require.NoError(t, err)
+	var mdMd []MetricData
+	for key, partition := range mdPartitions {
+		for index, md := range partition {
+			assert.NotEmpty(t, key)
+			assert.Equal(t, key, md.MetricFamilyName)
+			assert.Equal(t, key, md.MetricMetadata.MetricFamilyName)
+			assert.Equal(t, noMdPartitions[key][index].MetricMetadata.Type, md.MetricMetadata.Type)
+			assert.Equal(t, noMdPartitions[key][index].MetricMetadata.MetricFamilyName, md.MetricMetadata.MetricFamilyName)
+			assert.NotEmpty(t, md.MetricMetadata.Help)
+			assert.Equal(t, "unit", md.MetricMetadata.Unit)
+			mdMd = append(mdMd, md)
+		}
+	}
+	assert.ElementsMatch(t, mdMd, noMdMd)
+
+	results, err := parser.TransformPrwToOtel(mdPartitions)
+	assert.Nil(t, err)
+	assert.NotNil(t, results)
+
 }

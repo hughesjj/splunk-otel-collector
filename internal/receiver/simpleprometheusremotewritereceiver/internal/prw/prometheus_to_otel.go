@@ -16,8 +16,8 @@ package prw
 
 import (
 	"context"
+	"github.com/jaegertracing/jaeger/pkg/multierror"
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
-	"strings"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -32,10 +32,10 @@ func (prwParser *PrwOtelParser) FromPrometheusWriteRequestMetrics(ctx context.Co
 	var otelMetrics pmetric.Metrics
 	metricFamiliesAndData, err := prwParser.partitionWriteRequest(*request)
 	if nil != err {
-		otelMetrics = prwParser.transformPrwToOtel(metricFamiliesAndData)
+		otelMetrics, err = prwParser.TransformPrwToOtel(metricFamiliesAndData)
 	}
 	prwParser.Reporter.OnMetricsProcessed(ctx, otelMetrics.DataPointCount(), err)
-	return otelMetrics, nil
+	return otelMetrics, err
 }
 
 type MetricData struct {
@@ -62,42 +62,6 @@ func NewPrwOtelParser(reporter transport.Reporter) (PrwOtelParser, error) {
 	}, nil
 }
 
-func getMetricNameAndFilteredLabels(labels *[]prompb.Label) (string, *[]prompb.Label) {
-	metricName := ""
-	var filteredLabels []prompb.Label
-
-	for _, label := range *labels {
-		if label.Name == "__name__" {
-			metricName = label.Value
-		} else {
-			filteredLabels = append(filteredLabels, label)
-		}
-	}
-
-	return metricName, &filteredLabels
-}
-
-func getMetricTypeByLabels(labels *[]prompb.Label) prompb.MetricMetadata_MetricType {
-	// TODO hughesjj actually assign the slice?
-	metricName, _ := getMetricNameAndFilteredLabels(labels)
-
-	if strings.HasSuffix(metricName, "_total") || strings.HasSuffix(metricName, "_count") || strings.HasSuffix(metricName, "_counter") {
-		return prompb.MetricMetadata_COUNTER
-	}
-
-	for _, label := range *labels {
-		if label.Name == "le" {
-			return prompb.MetricMetadata_HISTOGRAM
-		}
-
-		if label.Name == "quantile" {
-			return prompb.MetricMetadata_SUMMARY
-		}
-	}
-	// TODO hughesjj okay should we ever return unknown?
-	return prompb.MetricMetadata_GAUGE
-}
-
 // See https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/13bcae344506fe2169b59d213361d04094c651f6/receiver/prometheusreceiver/internal/util.go#L106
 
 func (prwParser *PrwOtelParser) partitionWriteRequest(writeReq prompb.WriteRequest) (map[string][]MetricData, error) {
@@ -113,14 +77,14 @@ func (prwParser *PrwOtelParser) partitionWriteRequest(writeReq prompb.WriteReque
 	}
 
 	for _, ts := range writeReq.Timeseries {
-		metricName, filteredLabels := getMetricNameAndFilteredLabels(&ts.Labels)
-		metricFamilyName := getBaseMetricFamilyName(metricName)
+		metricName, filteredLabels := tools.GetMetricNameAndFilteredLabels(&ts.Labels)
+		metricFamilyName := tools.GetBaseMetricFamilyName(metricName)
 
 		// Determine metric type using cache if available, otherwise use label analysis
 		metricMetadata, ok := prwParser.metricTypesCache.Get(metricName)
 		if !ok {
-			metricType := getMetricTypeByLabels(&ts.Labels)
-			metricMetadata, ok = prwParser.metricTypesCache.AddHeuristic(metricName, prompb.MetricMetadata{
+			metricType := tools.GetMetricTypeByLabels(&ts.Labels)
+			metricMetadata = prwParser.metricTypesCache.AddHeuristic(metricName, prompb.MetricMetadata{
 				// TODO gotta add unit and help too I think?
 				MetricFamilyName: metricFamilyName,
 				Type:             metricType,
@@ -152,34 +116,26 @@ func (prwParser *PrwOtelParser) partitionWriteRequest(writeReq prompb.WriteReque
 	return partitions, nil
 }
 
-func getBaseMetricFamilyName(metricName string) string {
-	// Remove known suffixes for Sum/Counter, Histogram and Summary metric types.
-	// While not strictly enforced in the protobuf, prometheus does not support "colliding"
-	// "metric family names" in the same write request, so this should be safe
-	// https://prometheus.io/docs/practices/naming/
-	// https://prometheus.io/docs/concepts/metric_types/
-	suffixes := []string{"_count", "_sum", "_bucket", "_created"}
-	for _, suffix := range suffixes {
-		if strings.HasSuffix(metricName, suffix) {
-			metricName = strings.TrimSuffix(metricName, suffix)
-			break
-		}
-	}
-
-	return metricName
-}
-
-func (prwParser *PrwOtelParser) transformPrwToOtel(parsedPrwMetrics map[string][]MetricData) pmetric.Metrics {
+func (prwParser *PrwOtelParser) TransformPrwToOtel(parsedPrwMetrics map[string][]MetricData) (pmetric.Metrics, error) {
 	// TODO hughesjj oooffff... so do we shove it all into one "metrics" I suppose?
 	metric := pmetric.NewMetrics()
+	var errors []error
 	for metricFamily, metrics := range parsedPrwMetrics {
 		rm := metric.ResourceMetrics().AppendEmpty()
-		prwParser.addMetrics(rm, metricFamily, metrics)
+		err := prwParser.addMetrics(rm, metricFamily, metrics)
+		if err != nil {
+			// TODO hughesjj I think I need to better pass context?  Also no idea why this takes a context...
+			errors = append(errors, err)
+			prwParser.Reporter.OnTranslationError(context.Background(), err)
+		}
 	}
-	return metric
+	if errors != nil {
+		return metric, multierror.Wrap(errors)
+	}
+	return metric, nil
 }
 
-func (prwParser *PrwOtelParser) addMetrics(rm pmetric.ResourceMetrics, family string, metrics []MetricData) {
+func (prwParser *PrwOtelParser) addMetrics(rm pmetric.ResourceMetrics, family string, metrics []MetricData) error {
 	// TODO hughesjj refactor just getting it working for now
 	// if type is gauge then add new scope metric
 
@@ -263,4 +219,5 @@ func (prwParser *PrwOtelParser) addMetrics(rm pmetric.ResourceMetrics, family st
 		}
 
 	}
+	return nil
 }

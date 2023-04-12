@@ -3,6 +3,7 @@ package testdata
 import (
 	"fmt"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
 )
 
 var sampleCounterTs = []prompb.TimeSeries{
@@ -136,17 +137,18 @@ func AddMetadataScaffoldToWriteRequests(writeRequests []*prompb.WriteRequest) []
 		}
 
 		// Generate metadata for each unique metric name in the WriteRequest.
-		metricNames := make(map[string]bool)
+		var metricNames []string
 		for _, ts := range wr.Timeseries {
 			for _, label := range ts.Labels {
 				if label.Name == "__name__" {
-					metricNames[label.Value] = true
+					metricNames = append(metricNames, label.Value)
 				}
 			}
 		}
 
 		// Add metadata for each unique metric name.
-		for name := range metricNames {
+		for _, name := range metricNames {
+			name = tools.GetBaseMetricFamilyName(name)
 			md := prompb.MetricMetadata{
 				MetricFamilyName: name,
 				Type:             prompb.MetricMetadata_UNKNOWN,
@@ -169,6 +171,7 @@ func GetWriteRequestsWithMetadata() []*prompb.WriteRequest {
 	wrq := GetWriteRequests()
 	wrqMd := AddMetadataScaffoldToWriteRequests(wrq)
 	// Counter, Gauge, Histogram, Summary
+	// While the rest may be sentinels, we should really fix any metric types where possible
 	for _, wq := range wrqMd {
 		var mdType prompb.MetricMetadata_MetricType
 		switch &wq.Timeseries {
@@ -189,4 +192,23 @@ func GetWriteRequestsWithMetadata() []*prompb.WriteRequest {
 		}
 	}
 	return wrqMd
+}
+
+func FlattenWriteRequests(request []*prompb.WriteRequest) *prompb.WriteRequest {
+	var ts []prompb.TimeSeries
+	for _, req := range request {
+		for _, t := range req.Timeseries {
+			ts = append(ts, t)
+		}
+	}
+	var md []prompb.MetricMetadata
+	for _, req := range request {
+		for _, t := range req.Metadata {
+			md = append(md, t)
+		}
+	}
+	return &prompb.WriteRequest{
+		Timeseries: ts,
+		Metadata:   md,
+	}
 }
