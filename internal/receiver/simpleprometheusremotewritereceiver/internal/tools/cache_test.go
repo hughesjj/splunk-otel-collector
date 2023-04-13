@@ -15,6 +15,7 @@
 package tools
 
 import (
+	"context"
 	"strconv"
 	"testing"
 
@@ -24,7 +25,7 @@ import (
 
 func TestCacheAccessPatterns(t *testing.T) {
 	expectedCapacity := 10
-	pmtCache := NewPrometheusMetricTypeCache(expectedCapacity)
+	pmtCache := NewPrometheusMetricTypeCache(context.Background(), expectedCapacity)
 	assert.NotNil(t, pmtCache)
 
 	// empty cache should return nothing but throw no errors either
@@ -56,18 +57,18 @@ func TestCacheAccessPatterns(t *testing.T) {
 	assert.Equal(t, prompb.MetricMetadata_COUNTER, value.Type)
 
 	// as an initial value it's fine to add it
-	value = pmtCache.AddHeuristic("HeursticFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_GAUGE})
+	value = pmtCache.AddHeuristic("HeuristicFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_GAUGE})
 	assert.Equal(t, prompb.MetricMetadata_GAUGE, value.Type)
 
 	// It should be overridden by any Explicit metadata though
-	value = pmtCache.AddMetadata("HeursticFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_HISTOGRAM})
+	value = pmtCache.AddMetadata("HeuristicFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_HISTOGRAM})
 	assert.Equal(t, prompb.MetricMetadata_HISTOGRAM, value.Type)
 
 	// If they give us conflicting explicit metadata, we should trust their latest
-	value = pmtCache.AddMetadata("HeursticFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_SUMMARY})
+	value = pmtCache.AddMetadata("HeuristicFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_SUMMARY})
 	assert.Equal(t, prompb.MetricMetadata_SUMMARY, value.Type)
 
 	// Unless they give us literal junk
-	value = pmtCache.AddMetadata("HeursticFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_UNKNOWN})
+	value = pmtCache.AddMetadata("HeuristicFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_UNKNOWN})
 	assert.Equal(t, prompb.MetricMetadata_SUMMARY, value.Type)
 }

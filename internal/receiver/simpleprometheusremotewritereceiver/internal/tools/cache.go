@@ -26,9 +26,7 @@ type PrometheusMetricTypeCache struct {
 	prwMdCache *cache.Cache[string, prompb.MetricMetadata]
 }
 
-func NewPrometheusMetricTypeCache(capacity int) *PrometheusMetricTypeCache {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func NewPrometheusMetricTypeCache(ctx context.Context, capacity int) *PrometheusMetricTypeCache {
 	lruCache := cache.NewContext(ctx, cache.AsLRU[string, prompb.MetricMetadata](lru.WithCapacity(capacity)))
 	return &PrometheusMetricTypeCache{
 		prwMdCache: lruCache,

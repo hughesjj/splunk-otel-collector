@@ -37,8 +37,7 @@ func TestHappy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cfg := createDefaultConfig().(*Config)
-	//cfg := createDefaultConfig()
+	cfg := createDefaultConfig().(Config)
 	freePort, err := transport.GetFreePort()
 	require.Nil(t, err)
 
@@ -52,15 +51,13 @@ func TestHappy(t *testing.T) {
 	mockSettings := receivertest.NewNopCreateSettings()
 	mockConsumer := consumertest.NewNop()
 	mockReporter := prw.NewMockReporter(len(sampleNoMdMetrics) + len(sampleMdMetrics))
-	receiver, err := New(mockSettings, *cfg, mockConsumer)
+	receiver, err := New(mockSettings, cfg, mockConsumer)
 	prwReceiver := receiver.(*simplePrometheusWriteReceiver)
 	prwReceiver.reporter = mockReporter
 
 	assert.Nil(t, err)
 	require.NotNil(t, prwReceiver)
 	require.Nil(t, prwReceiver.Start(ctx, nopHost))
-
-	//prwReceiver.Flush(ctx)
 
 	// Send some metrics
 	client, err := transport.NewMockPrwClient(
@@ -73,7 +70,7 @@ func TestHappy(t *testing.T) {
 	// first try processing them without heuristics, then send them again with metadata.  check later to see if heuristics worked
 	for index, wq := range sampleNoMdMetrics {
 		mockReporter.AddExpected(1)
-		err := client.SendWriteRequest(wq)
+		err = client.SendWriteRequest(wq)
 		assert.Nil(t, err, "failed to write %d", index)
 		if nil != err {
 			assert.Nil(t, errors.Unwrap(err))

@@ -25,21 +25,21 @@ import (
 )
 
 // MockReporter provides a Reporter that provides some useful functionalities for
-// tests (eg.: wait for certain number of messages).
+// tests (e.g.: wait for certain number of messages).
 type MockReporter struct {
-	//noCopy             noCopy
+	TranslationErrors  []error
 	wgMetricsProcessed sync.WaitGroup
 	TotalCalls         int
 	MessagesProcessed  int
 }
+
+var _ transport.Reporter = (*MockReporter)(nil)
 
 func (m *MockReporter) AddExpected(newCalls int) int {
 	m.wgMetricsProcessed.Add(newCalls)
 	m.TotalCalls += newCalls
 	return m.TotalCalls
 }
-
-var _ transport.Reporter = (*MockReporter)(nil)
 
 // NewMockReporter returns a new instance of a MockReporter.
 func NewMockReporter(expectedOnMetricsProcessedCalls int) *MockReporter {
@@ -53,6 +53,7 @@ func (m *MockReporter) OnDataReceived(ctx context.Context) context.Context {
 }
 
 func (m *MockReporter) OnTranslationError(ctx context.Context, err error) {
+	m.TranslationErrors = append(m.TranslationErrors, err)
 }
 
 func (m *MockReporter) OnMetricsProcessed(ctx context.Context, numReceivedMessages int, err error) {

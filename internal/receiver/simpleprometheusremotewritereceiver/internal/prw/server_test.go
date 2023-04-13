@@ -17,8 +17,7 @@ package prw
 import (
 	"context"
 	"fmt"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/testdata"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
+	"net/http"
 	"testing"
 	"time"
 
@@ -26,10 +25,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/testdata"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 )
 
 func TestSmoke(t *testing.T) {
 	mc := make(chan pmetric.Metrics)
+	defer close(mc)
 	timeout := 5 * time.Second
 	addr := confignet.NetAddr{
 		Endpoint:  "localhost:0",
@@ -38,24 +41,24 @@ func TestSmoke(t *testing.T) {
 	reporter := NewMockReporter(0)
 	cfg := NewPrwConfig(
 		addr,
-		"/metrics",
+		"metrics",
 		timeout,
 		reporter,
 	)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	receiver, err := NewPrometheusRemoteWriteReceiver(ctx, *cfg, mc)
+	receiver, err := NewPrometheusRemoteWriteServer(ctx, cfg, mc)
 	assert.Nil(t, err)
 	require.NotNil(t, receiver)
 
-	go func() {
-		assert.Nil(t, receiver.ListenAndServe())
-	}()
+	go func() { assert.ErrorIs(t, receiver.ListenAndServe(), http.ErrServerClosed) }()
 
-	closeAfter := 20 * time.Second
+	closeAfter := 2 * time.Second
 	t.Logf("will close after %d seconds, starting at %d", closeAfter/time.Second, time.Now().Unix())
 
 	select {
+	case <-mc:
+		require.Fail(t, "Should not be sending metrics in this test")
 	case <-time.After(closeAfter):
 		t.Logf("Closed at %d!", time.Now().Unix())
 		require.Nil(t, receiver.Shutdown(ctx))
@@ -68,7 +71,8 @@ func TestSmoke(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	mc := make(chan pmetric.Metrics)
-	timeout := 5 * time.Second
+	defer close(mc)
+	testTimeout := 5 * time.Minute
 	port, err := transport.GetFreePort()
 	require.Nil(t, err)
 
@@ -80,35 +84,50 @@ func TestWrite(t *testing.T) {
 	cfg := NewPrwConfig(
 		addr,
 		"/metrics",
-		timeout,
+		5*time.Second,
 		reporter,
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-	receiver, err := NewPrometheusRemoteWriteReceiver(ctx, *cfg, mc)
-	assert.Nil(t, err)
+	receiver, err := NewPrometheusRemoteWriteServer(ctx, cfg, mc)
+	require.NoError(t, err)
 	require.NotNil(t, receiver)
 
+	go func() { require.NoError(t, receiver.ListenAndServe()) }()
+
+	// Receiver takes care of lifecycle for us.  Here, need ot ensure we consume from channel just in case
+	metricsSeen := 0
 	go func() {
-		assert.Nil(t, receiver.ListenAndServe())
+		for {
+			select {
+			case metric := <-mc: // note that this is handled for us at the receiver level.  Need to ensure sufficient buffering, lest it block forever
+				require.NotNil(t, metric)
+				assert.Greater(t, metric.DataPointCount(), 0)
+				assert.Greater(t, metric.MetricCount(), 0)
+				assert.NotNil(t, metric.ResourceMetrics())
+				metricsSeen += 1
+			case <-time.After(testTimeout + 2*time.Second):
+				require.NotNil(t, receiver.Shutdown(ctx))
+				require.Fail(t, "Should have closed server by now")
+				return
+			case <-ctx.Done():
+				assert.Error(t, ctx.Err())
+				return
+			}
+		}
 	}()
 
-	closeAfter := 20 * time.Second
-	t.Logf("will close after %d seconds, starting at %d", closeAfter/time.Second, time.Now().Unix())
 	client, err := transport.NewMockPrwClient(addr.Endpoint, "/metrics")
 	require.NotNil(t, client)
 	require.Nil(t, err)
 
+	time.Sleep(2 * time.Second)
 	for _, wq := range testdata.GetWriteRequests() {
+		t.Logf("sending data...")
 		reporter.AddExpected(len(wq.Timeseries))
-		assert.Nil(t, client.SendWriteRequest(wq))
+		err := client.SendWriteRequest(wq)
+		assert.Nil(t, err, "Got error in server: %s", err)
 	}
-	require.Nil(t, receiver.Shutdown(ctx))
-
-	select {
-	case <-time.After(timeout + 2*time.Second):
-		require.Fail(t, "Should have closed server by now")
-	case <-ctx.Done():
-		assert.Error(t, ctx.Err())
-	}
+	go func() { require.Nil(t, receiver.Shutdown(ctx)) }()
+	require.Greater(t, metricsSeen, 0)
 }

@@ -78,14 +78,14 @@ func (r *simplePrometheusWriteReceiver) buildTransportServer(ctx context.Context
 		r.config.Timeout,
 		r.reporter,
 	)
-	server, err := prw.NewPrometheusRemoteWriteReceiver(ctx, *cfg, metrics)
+	server, err := prw.NewPrometheusRemoteWriteServer(ctx, cfg, metrics)
 	return server, err
 
 }
 
 // Start starts an HTTP server that can process Prometheus Remote Write Requests
 func (r *simplePrometheusWriteReceiver) Start(ctx context.Context, host component.Host) error {
-	metricsChannel := make(chan pmetric.Metrics, 10)
+	metricsChannel := make(chan pmetric.Metrics, r.config.BufferSize)
 	ctx, r.cancel = context.WithCancel(ctx)
 	server, err := r.buildTransportServer(ctx, metricsChannel)
 	if err != nil {
@@ -101,24 +101,26 @@ func (r *simplePrometheusWriteReceiver) Start(ctx context.Context, host componen
 	}
 	r.server = server
 	// Start server
-	go func(ctx context.Context) {
+	go func() {
 		if err := r.server.ListenAndServe(); err != nil {
 			if !errors.Is(err, net.ErrClosed) {
 				host.ReportFatalError(err)
 			}
 		}
-	}(ctx)
+	}()
 	// Manage server lifecycle
-	go func(ctx context.Context) {
+	go func(ctx2 context.Context) {
 		for {
 			select {
 			case metrics := <-metricsChannel:
-				err := r.Flush(ctx, metrics)
+				err := r.Flush(ctx2, metrics)
 				if err != nil {
-					r.reporter.OnTranslationError(ctx, err)
+					r.reporter.OnTranslationError(ctx2, err)
+					close(metricsChannel)
 					return
 				}
-			case <-ctx.Done():
+			case <-ctx2.Done():
+				close(metricsChannel)
 				return
 			}
 		}

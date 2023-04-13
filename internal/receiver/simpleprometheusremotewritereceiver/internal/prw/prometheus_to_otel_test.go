@@ -25,15 +25,16 @@ import (
 )
 
 func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
+	ctx := context.Background()
 	expectedCalls := 1
 	reporter := NewMockReporter(expectedCalls)
 	require.NotNil(t, reporter)
-	parser, err := NewPrwOtelParser(reporter)
+	parser, err := NewPrwOtelParser(context.Background(), reporter)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.GetWriteRequests()
 	for _, sampleWriteRequest := range sampleWriteRequests {
-		partitions, err := parser.partitionWriteRequest(*sampleWriteRequest)
+		partitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequest)
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
@@ -44,7 +45,7 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 	}
 	sampleWriteRequestsMd := testdata.GetWriteRequestsWithMetadata()
 	for _, sampleWriteRequest := range sampleWriteRequestsMd {
-		partitions, err := parser.partitionWriteRequest(*sampleWriteRequest)
+		partitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequest)
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
@@ -55,15 +56,16 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 }
 
 func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
+	ctx := context.Background()
 	expectedCalls := 1
 	reporter := NewMockReporter(expectedCalls)
 	require.NotNil(t, reporter)
-	parser, err := NewPrwOtelParser(reporter)
+	parser, err := NewPrwOtelParser(context.Background(), reporter)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.GetWriteRequests()
 	for _, sampleWriteRequest := range sampleWriteRequests {
-		partitions, err := parser.partitionWriteRequest(*sampleWriteRequest)
+		partitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequest)
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
@@ -74,7 +76,7 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 	}
 	sampleWriteRequestsMd := testdata.GetWriteRequestsWithMetadata()
 	for _, sampleWriteRequest := range sampleWriteRequestsMd {
-		partitions, err := parser.partitionWriteRequest(*sampleWriteRequest)
+		partitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequest)
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
@@ -88,14 +90,15 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 }
 
 func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
+	ctx := context.Background()
 	expectedCalls := 1
 	reporter := NewMockReporter(expectedCalls)
 	require.NotNil(t, reporter)
-	parser, err := NewPrwOtelParser(reporter)
+	parser, err := NewPrwOtelParser(context.Background(), reporter)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())
-	noMdPartitions, err := parser.partitionWriteRequest(*sampleWriteRequests)
+	noMdPartitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequests)
 	require.NoError(t, err)
 	var noMdMd []MetricData
 	for key, partition := range noMdPartitions {
@@ -113,7 +116,7 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	}
 
 	sampleWriteRequestsMd := testdata.FlattenWriteRequests(testdata.GetWriteRequestsWithMetadata())
-	mdPartitions, err := parser.partitionWriteRequest(*sampleWriteRequestsMd)
+	mdPartitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequestsMd)
 	require.NoError(t, err)
 	var mdMd []MetricData
 	for key, partition := range mdPartitions {
@@ -139,7 +142,7 @@ func TestFromWriteRequest(t *testing.T) {
 	expectedCalls := 1
 	reporter := NewMockReporter(expectedCalls)
 	require.NotNil(t, reporter)
-	parser, err := NewPrwOtelParser(reporter)
+	parser, err := NewPrwOtelParser(context.Background(), reporter)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())

@@ -26,6 +26,8 @@ import (
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 )
 
+var _ transport.Reporter = (*reporter)(nil)
+
 // reporter struct implements the transport.Reporter interface to give consistent
 // observability per Collector metric observability package.
 type reporter struct {

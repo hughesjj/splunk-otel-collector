@@ -38,7 +38,7 @@ func GetBaseMetricFamilyName(metricName string) string {
 
 	return metricName
 }
-func GetMetricNameAndFilteredLabels(labels *[]prompb.Label) (string, *[]prompb.Label) {
+func GetMetricNameAndFilteredLabels(labels *[]prompb.Label) (string, []prompb.Label) {
 	metricName := ""
 	var filteredLabels []prompb.Label
 
@@ -50,7 +50,7 @@ func GetMetricNameAndFilteredLabels(labels *[]prompb.Label) (string, *[]prompb.L
 		}
 	}
 
-	return metricName, &filteredLabels
+	return metricName, filteredLabels
 }
 
 func GetMetricTypeByLabels(labels *[]prompb.Label) prompb.MetricMetadata_MetricType {
