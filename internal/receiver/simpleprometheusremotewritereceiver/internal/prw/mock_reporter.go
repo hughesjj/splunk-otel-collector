@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
@@ -29,16 +30,17 @@ import (
 type MockReporter struct {
 	TranslationErrors  []error
 	wgMetricsProcessed sync.WaitGroup
-	TotalCalls         int
-	MessagesProcessed  int
+	TotalCalls         uint32
+	MessagesProcessed  uint32
 }
 
 var _ transport.Reporter = (*MockReporter)(nil)
 
 func (m *MockReporter) AddExpected(newCalls int) int {
 	m.wgMetricsProcessed.Add(newCalls)
-	m.TotalCalls += newCalls
-	return m.TotalCalls
+	atomic.AddUint32(&m.MessagesProcessed, uint32(newCalls))
+	atomic.AddUint32(&m.TotalCalls, uint32(newCalls))
+	return int(m.TotalCalls)
 }
 
 // NewMockReporter returns a new instance of a MockReporter.
@@ -57,7 +59,7 @@ func (m *MockReporter) OnTranslationError(ctx context.Context, err error) {
 }
 
 func (m *MockReporter) OnMetricsProcessed(ctx context.Context, numReceivedMessages int, err error) {
-	m.MessagesProcessed += numReceivedMessages
+	atomic.AddUint32(&m.MessagesProcessed, uint32(numReceivedMessages))
 	m.wgMetricsProcessed.Done()
 }
 

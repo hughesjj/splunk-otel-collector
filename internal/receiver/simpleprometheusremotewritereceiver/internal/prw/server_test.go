@@ -17,6 +17,7 @@ package prw
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,16 +96,16 @@ func TestWrite(t *testing.T) {
 	go func() { require.NoError(t, receiver.ListenAndServe()) }()
 
 	// Receiver takes care of lifecycle for us.  Here, need ot ensure we consume from channel just in case
-	metricsSeen := 0
+	metricsSeen := int32(0)
 	go func() {
 		for {
 			select {
-			case metric := <-mc: // note that this is handled for us at the receiver level.  Need to ensure sufficient buffering, lest it block forever
+			case metric := <-mc:
 				require.NotNil(t, metric)
 				assert.Greater(t, metric.DataPointCount(), 0)
 				assert.Greater(t, metric.MetricCount(), 0)
 				assert.NotNil(t, metric.ResourceMetrics())
-				metricsSeen++
+				atomic.AddInt32(&metricsSeen, 1)
 			case <-time.After(testTimeout + 2*time.Second):
 				require.NotNil(t, receiver.Shutdown(ctx))
 				require.Fail(t, "Should have closed server by now")
@@ -128,5 +129,5 @@ func TestWrite(t *testing.T) {
 		assert.Nil(t, err, "Got error in server: %s", err)
 	}
 	go func() { require.Nil(t, receiver.Shutdown(ctx)) }()
-	require.Greater(t, metricsSeen, 0)
+	require.Greater(t, int(atomic.LoadInt32(&metricsSeen)), 0)
 }
