@@ -17,7 +17,6 @@ package prw
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"testing"
 	"time"
 
@@ -51,7 +50,7 @@ func TestSmoke(t *testing.T) {
 	assert.Nil(t, err)
 	require.NotNil(t, receiver)
 
-	go func() { assert.ErrorIs(t, receiver.ListenAndServe(), http.ErrServerClosed) }()
+	go func() { require.Nil(t, receiver.ListenAndServe()) }()
 
 	closeAfter := 2 * time.Second
 	t.Logf("will close after %d seconds, starting at %d", closeAfter/time.Second, time.Now().Unix())
@@ -105,7 +104,7 @@ func TestWrite(t *testing.T) {
 				assert.Greater(t, metric.DataPointCount(), 0)
 				assert.Greater(t, metric.MetricCount(), 0)
 				assert.NotNil(t, metric.ResourceMetrics())
-				metricsSeen += 1
+				metricsSeen++
 			case <-time.After(testTimeout + 2*time.Second):
 				require.NotNil(t, receiver.Shutdown(ctx))
 				require.Fail(t, "Should have closed server by now")
