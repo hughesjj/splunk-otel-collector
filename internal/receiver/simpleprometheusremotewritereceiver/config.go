@@ -18,10 +18,9 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/confignet"
 
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
-
-	"go.opentelemetry.io/collector/config/confignet"
 )
 
 var _ component.Config = (*Config)(nil)

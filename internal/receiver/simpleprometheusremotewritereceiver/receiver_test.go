@@ -16,34 +16,21 @@ package simpleprometheusremotewritereceiver
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/testdata"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/consumer/consumertest"
-	"go.opentelemetry.io/collector/receiver/receivertest"
-	"net"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/receiver/receivertest"
+
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/testdata"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 )
-
-func getFreePort() (int, error) {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-	if err != nil {
-		return 0, err
-	}
-
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
-}
 
 func TestHappy(t *testing.T) {
 	timeout := time.Minute
@@ -52,7 +39,7 @@ func TestHappy(t *testing.T) {
 
 	cfg := createDefaultConfig().(*Config)
 	//cfg := createDefaultConfig()
-	freePort, err := getFreePort()
+	freePort, err := transport.GetFreePort()
 	require.Nil(t, err)
 
 	cfg.ListenAddr.Endpoint = fmt.Sprintf("localhost:%d", freePort)
@@ -77,18 +64,25 @@ func TestHappy(t *testing.T) {
 	//prwReceiver.Flush(ctx)
 
 	// Send some metrics
-	client := transport.MockPrwClient{
-		NetAddr: cfg.ListenAddr,
-		Path:    "/metrics2", // TODO hughesjj does the path even matter given we're only server on this port?  Would mux let others share port?
-	}
+	client, err := transport.NewMockPrwClient(
+		cfg.ListenAddr.Endpoint,
+		"metrics",
+	)
+	require.Nil(t, err)
+	require.NotNil(t, client)
 
 	// first try processing them without heuristics, then send them again with metadata.  check later to see if heuristics worked
-	for _, wq := range sampleNoMdMetrics {
-		require.Nil(t, client.SendWriteRequest(wq))
+	for index, wq := range sampleNoMdMetrics {
+		err := client.SendWriteRequest(wq)
+		assert.Nil(t, err, "failed to write %d", index)
+		if nil != err {
+			assert.Nil(t, errors.Unwrap(err))
+		}
 	}
 	// TODO hughesjj now compare
-	for _, wq := range sampleMdMetrics {
-		require.Nil(t, client.SendWriteRequest(wq))
+	for index, wq := range sampleMdMetrics {
+		err = client.SendWriteRequest(wq)
+		assert.Nil(t, err, "failed to write %d reason %s", index, err.Error())
 	}
 
 	//closeAfter := math.Min(20 * time.Second, timeout - 5 * time.Second)

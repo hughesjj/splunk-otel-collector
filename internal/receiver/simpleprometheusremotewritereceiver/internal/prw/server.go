@@ -16,15 +16,15 @@ package prw
 
 import (
 	"context"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 	"net/http"
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/collector/config/confignet"
-
 	"github.com/prometheus/prometheus/storage/remote"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 )
 
 type PrometheusRemoteWriteReceiver struct {
@@ -84,14 +84,14 @@ func (prw *PrometheusRemoteWriteReceiver) ListenAndServe() error {
 }
 
 type handler struct {
-	parser   PrwOtelParser
+	parser   PrometheusRemoteOtelParser
 	ctx      context.Context
 	reporter transport.Reporter
 	mc       chan pmetric.Metrics
 	path     string
 }
 
-func newHandler(ctx context.Context, parser *PrwOtelParser, reporter transport.Reporter, path string, mc chan pmetric.Metrics) *handler {
+func newHandler(ctx context.Context, parser *PrometheusRemoteOtelParser, reporter transport.Reporter, path string, mc chan pmetric.Metrics) *handler {
 	return &handler{
 		ctx:      ctx,
 		path:     path,
@@ -110,7 +110,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	results, err := h.parser.FromPrometheusWriteRequestMetrics(h.ctx, req, h.reporter)
+	results, err := h.parser.FromPrometheusWriteRequestMetrics(h.ctx, req)
 	if nil != err {
 		// Prolly server side errors too
 		http.Error(w, err.Error(), http.StatusBadRequest)

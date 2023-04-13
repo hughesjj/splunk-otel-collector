@@ -43,6 +43,7 @@ func createMetricsReceiver(
 }
 
 func createDefaultConfig() component.Config {
+	// config.NewReceiverSettings(config.NewComponentID(typeStr))
 	return &Config{
 		Timeout: 30 * time.Second,
 		ListenAddr: confignet.NetAddr{

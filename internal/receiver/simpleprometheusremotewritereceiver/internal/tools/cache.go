@@ -17,10 +17,9 @@ package tools
 import (
 	"context"
 
+	cache "github.com/Code-Hex/go-generics-cache"
 	"github.com/Code-Hex/go-generics-cache/policy/lru"
 	"github.com/prometheus/prometheus/prompb"
-
-	cache "github.com/Code-Hex/go-generics-cache"
 )
 
 type PrometheusMetricTypeCache struct {

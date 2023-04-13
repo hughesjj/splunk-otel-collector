@@ -1,57 +1,85 @@
+// Copyright Splunk, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package transport
 
 import (
-	"bytes"
-	"compress/gzip"
-	"errors"
-	"fmt"
-	"github.com/golang/protobuf/proto"
-	"github.com/prometheus/prometheus/prompb"
-	"go.opentelemetry.io/collector/config/confignet"
-	"io"
-	"net/http"
+	"context"
+	"net"
+	"net/url"
 	"time"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
+	"github.com/prometheus/common/config"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/storage/remote"
 )
 
 type MockPrwClient struct {
-	confignet.NetAddr
-	Path    string
+	Client  remote.WriteClient
 	Timeout time.Duration
 }
 
+func NewMockPrwClient(addr string, path string) (MockPrwClient, error) {
+	URL := &config.URL{
+		URL: &url.URL{
+			Scheme: "http",
+			Host:   addr,
+			Path:   path,
+		},
+	}
+	timeout := time.Second * 10
+	cfg := &remote.ClientConfig{
+		URL:              URL,
+		Timeout:          model.Duration(timeout),
+		HTTPClientConfig: config.HTTPClientConfig{},
+	}
+	client, err := remote.NewWriteClient("mock_prw_client", cfg)
+	return MockPrwClient{
+		Client:  client,
+		Timeout: timeout,
+	}, err
+}
+
 func (prwc *MockPrwClient) SendWriteRequest(wr *prompb.WriteRequest) error {
+
 	data, err := proto.Marshal(wr)
 	if err != nil {
 		return err
 	}
 
-	var buf bytes.Buffer
-	writer := gzip.NewWriter(&buf)
-	if _, err := writer.Write(data); err != nil {
-		return err
-	}
-	if err := writer.Close(); err != nil {
-		return err
-	}
+	compressed := snappy.Encode(nil, data)
 
-	remoteWriteURL := fmt.Sprintf("http://%s/%s", prwc.NetAddr.Endpoint, prwc.Path)
-	req, err := http.NewRequest(http.MethodPost, remoteWriteURL, &buf)
+	ctx, cancel := context.WithTimeout(context.Background(), prwc.Timeout)
+	defer cancel()
+
+	err = prwc.Client.Store(ctx, compressed)
+	return err
+}
+
+func GetFreePort() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
 	if err != nil {
-		return err
+		return 0, err
 	}
-	req.Header.Set("Content-Encoding", "gzip")
 
-	client := &http.Client{Timeout: prwc.Timeout}
-	resp, err := client.Do(req)
+	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return errors.New(string(body))
-	}
-
-	return nil
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
 }

@@ -17,7 +17,6 @@ package simpleprometheusremotewritereceiver
 import (
 	"context"
 	"errors"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 	"net"
 	"sync"
 
@@ -27,6 +26,7 @@ import (
 	"go.opentelemetry.io/collector/receiver"
 
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/prw"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 )
 
 // TODO hughesjj wait why is this a thing?
@@ -68,6 +68,9 @@ func New(
 }
 func (r *simplePrometheusWriteReceiver) buildTransportServer(ctx context.Context, metrics chan pmetric.Metrics) (transport.Server, error) {
 	listener, err := net.Listen(r.config.ListenAddr.Transport, r.config.ListenAddr.Endpoint)
+	if nil != err {
+		return nil, err
+	}
 	defer listener.Close()
 	cfg := prw.NewPrwConfig(
 		r.config.ListenAddr,
@@ -130,9 +133,8 @@ func (r *simplePrometheusWriteReceiver) Shutdown(context.Context) error {
 	defer r.Unlock()
 	if r.cancel == nil {
 		return nil
-	} else {
-		defer r.cancel()
 	}
+	defer r.cancel()
 	return r.server.Close()
 }
 

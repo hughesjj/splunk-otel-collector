@@ -15,8 +15,9 @@
 package tools
 
 import (
-	"github.com/prometheus/prometheus/prompb"
 	"strings"
+
+	"github.com/prometheus/prometheus/prompb"
 )
 
 const TypeStr = "simpleprometheusremotewrite"

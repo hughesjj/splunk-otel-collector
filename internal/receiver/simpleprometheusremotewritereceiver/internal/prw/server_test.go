@@ -16,13 +16,15 @@ package prw
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
+	"fmt"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/testdata"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/collector/config/confignet"
-
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
@@ -57,6 +59,53 @@ func TestSmoke(t *testing.T) {
 	case <-time.After(closeAfter):
 		t.Logf("Closed at %d!", time.Now().Unix())
 		require.Nil(t, receiver.Shutdown(ctx))
+	case <-time.After(timeout + 2*time.Second):
+		require.Fail(t, "Should have closed server by now")
+	case <-ctx.Done():
+		assert.Error(t, ctx.Err())
+	}
+
+}
+func TestWrite(t *testing.T) {
+	mc := make(chan pmetric.Metrics)
+	timeout := 5 * time.Second
+	port, err := transport.GetFreePort()
+	require.Nil(t, err)
+
+	addr := confignet.NetAddr{
+		Endpoint:  fmt.Sprintf("localhost:%d", port),
+		Transport: "tcp",
+	}
+	reporter := NewMockReporter(0)
+	cfg := NewPrwConfig(
+		addr,
+		"/metrics",
+		timeout,
+		reporter,
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	receiver, err := NewPrometheusRemoteWriteReceiver(ctx, *cfg, mc)
+	assert.Nil(t, err)
+	require.NotNil(t, receiver)
+
+	go func() {
+		assert.Nil(t, receiver.ListenAndServe())
+	}()
+
+	closeAfter := 20 * time.Second
+	t.Logf("will close after %d seconds, starting at %d", closeAfter/time.Second, time.Now().Unix())
+	client, err := transport.NewMockPrwClient(addr.Endpoint, "/metrics")
+	require.NotNil(t, client)
+	require.Nil(t, err)
+
+	for _, wq := range testdata.GetWriteRequests() {
+		reporter.AddExpected(len(wq.Timeseries))
+		assert.Nil(t, client.SendWriteRequest(wq))
+	}
+	require.Nil(t, receiver.Shutdown(ctx))
+
+	select {
 	case <-time.After(timeout + 2*time.Second):
 		require.Fail(t, "Should have closed server by now")
 	case <-ctx.Done():

@@ -16,25 +16,30 @@ package prw
 
 import (
 	"context"
-	"github.com/jaegertracing/jaeger/pkg/multierror"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 	"time"
 
+	"github.com/jaegertracing/jaeger/pkg/multierror"
+	"github.com/prometheus/prometheus/prompb"
 	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/tools"
-
-	"github.com/prometheus/prometheus/prompb"
-	"go.opentelemetry.io/collector/pdata/pmetric"
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 )
 
-func (prwParser *PrwOtelParser) FromPrometheusWriteRequestMetrics(ctx context.Context, request *prompb.WriteRequest, reporter transport.Reporter) (pmetric.Metrics, error) {
+func (prwParser *PrometheusRemoteOtelParser) FromPrometheusWriteRequestMetrics(ctx context.Context, request *prompb.WriteRequest) (pmetric.Metrics, error) {
 	var otelMetrics pmetric.Metrics
 	metricFamiliesAndData, err := prwParser.partitionWriteRequest(*request)
-	if nil != err {
-		otelMetrics, err = prwParser.TransformPrwToOtel(metricFamiliesAndData)
+	if nil == err {
+		otelMetrics, err = prwParser.TransformPrwToOtel(ctx, metricFamiliesAndData)
+		if nil == err {
+			prwParser.Reporter.OnMetricsProcessed(ctx, otelMetrics.DataPointCount(), err)
+		} else {
+			prwParser.Reporter.OnTranslationError(ctx, err)
+		}
+	} else {
+		prwParser.Reporter.OnTranslationError(ctx, err)
 	}
-	prwParser.Reporter.OnMetricsProcessed(ctx, otelMetrics.DataPointCount(), err)
 	return otelMetrics, err
 }
 
@@ -48,15 +53,15 @@ type MetricData struct {
 	MetricMetadata   prompb.MetricMetadata
 }
 
-type PrwOtelParser struct {
+type PrometheusRemoteOtelParser struct {
 	metricTypesCache *tools.PrometheusMetricTypeCache
 	Reporter         transport.Reporter
 }
 
 const maxCachedMetadata = 10000
 
-func NewPrwOtelParser(reporter transport.Reporter) (PrwOtelParser, error) {
-	return PrwOtelParser{
+func NewPrwOtelParser(reporter transport.Reporter) (PrometheusRemoteOtelParser, error) {
+	return PrometheusRemoteOtelParser{
 		metricTypesCache: tools.NewPrometheusMetricTypeCache(maxCachedMetadata),
 		Reporter:         reporter,
 	}, nil
@@ -64,7 +69,7 @@ func NewPrwOtelParser(reporter transport.Reporter) (PrwOtelParser, error) {
 
 // See https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/13bcae344506fe2169b59d213361d04094c651f6/receiver/prometheusreceiver/internal/util.go#L106
 
-func (prwParser *PrwOtelParser) partitionWriteRequest(writeReq prompb.WriteRequest) (map[string][]MetricData, error) {
+func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(writeReq prompb.WriteRequest) (map[string][]MetricData, error) {
 	partitions := make(map[string][]MetricData)
 
 	if len(writeReq.Timeseries) >= maxCachedMetadata {
@@ -116,7 +121,7 @@ func (prwParser *PrwOtelParser) partitionWriteRequest(writeReq prompb.WriteReque
 	return partitions, nil
 }
 
-func (prwParser *PrwOtelParser) TransformPrwToOtel(parsedPrwMetrics map[string][]MetricData) (pmetric.Metrics, error) {
+func (prwParser *PrometheusRemoteOtelParser) TransformPrwToOtel(context context.Context, parsedPrwMetrics map[string][]MetricData) (pmetric.Metrics, error) {
 	// TODO hughesjj oooffff... so do we shove it all into one "metrics" I suppose?
 	metric := pmetric.NewMetrics()
 	var errors []error
@@ -126,7 +131,7 @@ func (prwParser *PrwOtelParser) TransformPrwToOtel(parsedPrwMetrics map[string][
 		if err != nil {
 			// TODO hughesjj I think I need to better pass context?  Also no idea why this takes a context...
 			errors = append(errors, err)
-			prwParser.Reporter.OnTranslationError(context.Background(), err)
+			prwParser.Reporter.OnTranslationError(context, err)
 		}
 	}
 	if errors != nil {
@@ -135,7 +140,7 @@ func (prwParser *PrwOtelParser) TransformPrwToOtel(parsedPrwMetrics map[string][
 	return metric, nil
 }
 
-func (prwParser *PrwOtelParser) addMetrics(rm pmetric.ResourceMetrics, family string, metrics []MetricData) error {
+func (prwParser *PrometheusRemoteOtelParser) addMetrics(rm pmetric.ResourceMetrics, family string, metrics []MetricData) error {
 	// TODO hughesjj refactor just getting it working for now
 	// if type is gauge then add new scope metric
 

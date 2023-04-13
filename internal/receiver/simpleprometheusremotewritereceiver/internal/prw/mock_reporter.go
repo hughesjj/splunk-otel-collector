@@ -17,9 +17,10 @@ package prw
 import (
 	"context"
 	"fmt"
-	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 	"sync"
 	"time"
+
+	"github.com/signalfx/splunk-otel-collector/internal/receiver/simpleprometheusremotewritereceiver/internal/transport"
 )
 
 // MockReporter provides a Reporter that provides some useful functionalities for

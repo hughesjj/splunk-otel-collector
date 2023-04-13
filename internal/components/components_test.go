@@ -68,7 +68,7 @@ func TestDefaultComponents(t *testing.T) {
 		"redis",
 		"sapm",
 		"signalfx",
-		"simpleprometheusremotewritereceiver",
+		"simpleprometheusremotewrite",
 		"smartagent",
 		"splunk_hec",
 		"sqlquery",
