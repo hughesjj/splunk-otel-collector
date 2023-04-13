@@ -1,0 +1,4 @@
+1. int64 vs float64 for numeric like nums?
+2. Okay, should I move "server" up out of internal?  Would totally get rid of config duplication issues..
+3. more testing
+4. defer Unlock?
