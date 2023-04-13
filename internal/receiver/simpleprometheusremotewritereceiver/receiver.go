@@ -141,6 +141,5 @@ func (r *simplePrometheusWriteReceiver) Shutdown(context.Context) error {
 func (r *simplePrometheusWriteReceiver) Flush(ctx context.Context, metrics pmetric.Metrics) error {
 	err := r.nextConsumer.ConsumeMetrics(ctx, metrics)
 	r.reporter.OnMetricsProcessed(ctx, metrics.DataPointCount(), err)
-	panic("cool at least we're getting stuff")
 	return err
 }

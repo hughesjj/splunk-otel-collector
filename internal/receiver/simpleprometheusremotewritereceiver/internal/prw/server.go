@@ -119,5 +119,6 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.mc <- results
 	// In anticipation of eventually better supporting backpressure, return 202 instead of 204
-	w.WriteHeader(http.StatusAccepted)
+	//w.WriteHeader(http.StatusAccepted)
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -51,7 +51,6 @@ func TestHappy(t *testing.T) {
 	nopHost := componenttest.NewNopHost()
 	mockSettings := receivertest.NewNopCreateSettings()
 	mockConsumer := consumertest.NewNop()
-	//receiver, err := createMetricsReceiver(ctx, mockSettings, cfg, mockConsumer)
 	mockReporter := prw.NewMockReporter(len(sampleNoMdMetrics) + len(sampleMdMetrics))
 	receiver, err := New(mockSettings, *cfg, mockConsumer)
 	prwReceiver := receiver.(*simplePrometheusWriteReceiver)
@@ -73,6 +72,7 @@ func TestHappy(t *testing.T) {
 
 	// first try processing them without heuristics, then send them again with metadata.  check later to see if heuristics worked
 	for index, wq := range sampleNoMdMetrics {
+		mockReporter.AddExpected(1)
 		err := client.SendWriteRequest(wq)
 		assert.Nil(t, err, "failed to write %d", index)
 		if nil != err {
@@ -81,25 +81,13 @@ func TestHappy(t *testing.T) {
 	}
 	// TODO hughesjj now compare
 	for index, wq := range sampleMdMetrics {
+		mockReporter.AddExpected(1)
 		err = client.SendWriteRequest(wq)
-		assert.Nil(t, err, "failed to write %d reason %s", index, err.Error())
+		assert.Nil(t, err, "failed to write %d reason %s", index, err)
 	}
 
-	//closeAfter := math.Min(20 * time.Second, timeout - 5 * time.Second)
-	closeAfter := 20 * time.Second
-	t.Logf("will close after %d seconds, starting at %d", closeAfter/time.Second, time.Now().Unix())
-	select {
-	case <-time.After(closeAfter):
-		t.Logf("Closing at %d!", time.Now().Unix())
-		require.Nil(t, prwReceiver.Shutdown(ctx))
-	case <-time.After(timeout + 2*time.Second):
-		require.Fail(t, "Should have closed server by now")
-	case <-ctx.Done():
-		assert.Error(t, ctx.Err())
-	}
+	require.Nil(t, prwReceiver.Shutdown(ctx))
 
-	// TODO hughesjj now compare
-	// Prolly need to extend the reporter to inspect stuff
-	mockReporter.WaitAllOnMetricsProcessedCalls(30 * time.Second)
+	require.Nil(t, mockReporter.WaitAllOnMetricsProcessedCalls(30*time.Second))
 
 }

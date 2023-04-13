@@ -16,6 +16,7 @@ package prw
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -65,6 +66,19 @@ func (m *MockReporter) OnDebugf(template string, args ...interface{}) {
 
 // WaitAllOnMetricsProcessedCalls blocks until the number of expected calls
 // specified at creation of the reporter is completed.
-func (m *MockReporter) WaitAllOnMetricsProcessedCalls(timeout time.Duration) {
-	m.wgMetricsProcessed.Wait()
+func (m *MockReporter) WaitAllOnMetricsProcessedCalls(timeout time.Duration) error {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
+	defer cancel()
+
+	go func() {
+		m.wgMetricsProcessed.Wait()
+		cancel()
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return errors.New("took too long to return")
+	case <-ctx.Done():
+		return nil
+	}
 }

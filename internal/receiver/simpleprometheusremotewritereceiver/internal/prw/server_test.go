@@ -64,8 +64,8 @@ func TestSmoke(t *testing.T) {
 	case <-ctx.Done():
 		assert.Error(t, ctx.Err())
 	}
-
 }
+
 func TestWrite(t *testing.T) {
 	mc := make(chan pmetric.Metrics)
 	timeout := 5 * time.Second
@@ -111,5 +111,4 @@ func TestWrite(t *testing.T) {
 	case <-ctx.Done():
 		assert.Error(t, ctx.Err())
 	}
-
 }
