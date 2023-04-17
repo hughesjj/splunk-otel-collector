@@ -39,7 +39,7 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 		for key, partition := range partitions {
 			for _, md := range partition {
 				assert.NotEmpty(t, key)
-				assert.Equal(t, md.MetricFamilyName, key)
+				assert.Equal(t, md.MetricMetadata.MetricFamilyName, key)
 			}
 		}
 	}
@@ -70,7 +70,7 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 		for key, partition := range partitions {
 			for _, md := range partition {
 				assert.NotEmpty(t, key)
-				assert.Equal(t, md.MetricFamilyName, key)
+				assert.Equal(t, md.MetricMetadata.MetricFamilyName, key)
 			}
 		}
 	}
@@ -100,15 +100,21 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())
 	noMdPartitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequests)
 	require.NoError(t, err)
-	var noMdMd []MetricData
+
+	noMdMap := make(map[string]map[string][]MetricData)
 	for key, partition := range noMdPartitions {
+		require.Nil(t, noMdMap[key])
+		noMdMap[key] = make(map[string][]MetricData)
+
 		for _, md := range partition {
-			assert.Equal(t, key, md.MetricFamilyName)
-			assert.Equal(t, md.MetricMetadata.MetricFamilyName, key)
-			noMdMd = append(noMdMd, md)
+			assert.Equal(t, key, md.MetricMetadata.MetricFamilyName)
+
+			noMdMap[key][md.MetricName] = append(noMdMap[key][md.MetricName], md)
+
 			assert.Equal(t, md.MetricMetadata.MetricFamilyName, key)
 			assert.NotEmpty(t, md.MetricMetadata.Type)
 			assert.NotEmpty(t, md.MetricMetadata.MetricFamilyName)
+
 			// Help and Unit should only exist for things with metadata
 			assert.Empty(t, md.MetricMetadata.Unit)
 			assert.Empty(t, md.MetricMetadata.Help)
@@ -118,20 +124,29 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	sampleWriteRequestsMd := testdata.FlattenWriteRequests(testdata.GetWriteRequestsWithMetadata())
 	mdPartitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequestsMd)
 	require.NoError(t, err)
-	var mdMd []MetricData
 	for key, partition := range mdPartitions {
-		for index, md := range partition {
+		for _, md := range partition {
 			assert.NotEmpty(t, key)
-			assert.Equal(t, key, md.MetricFamilyName)
 			assert.Equal(t, key, md.MetricMetadata.MetricFamilyName)
-			assert.Equal(t, noMdPartitions[key][index].MetricMetadata.Type, md.MetricMetadata.Type)
-			assert.Equal(t, noMdPartitions[key][index].MetricMetadata.MetricFamilyName, md.MetricMetadata.MetricFamilyName)
+			assert.NotEmpty(t, md.MetricName)
+			assert.Equalf(t, key, md.MetricMetadata.MetricFamilyName, "%s was not %s.  metricname: %s, metric type: %d", key, md.MetricMetadata.MetricFamilyName, md.MetricName, md.MetricMetadata.Type) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?
+			noMetadataItem := noMdMap[key][md.MetricName][0]
+			noMdMap[key][md.MetricName] = noMdMap[key][md.MetricName][1:]
+			if len(noMdMap[key][md.MetricName]) == 0 {
+				delete(noMdMap[key], md.MetricName)
+			}
+			if len(noMdMap[key]) == 0 {
+				delete(noMdMap, key)
+			}
+			assert.Equalf(t, noMetadataItem.MetricName, md.MetricName, "%s was not %s.  family: %s, metric type: %s", noMetadataItem.MetricName, md.MetricName, md.MetricMetadata.MetricFamilyName, md.MetricMetadata.Type.String()) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
+			assert.Equalf(t, noMetadataItem.MetricMetadata.Type, md.MetricMetadata.Type, "%s was not %s.  metricname: %s", noMetadataItem.MetricMetadata.Type, md.MetricMetadata.Type.String(), md.MetricName)                       // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
+			assert.Equal(t, noMetadataItem.MetricMetadata.MetricFamilyName, md.MetricMetadata.MetricFamilyName)
 			assert.NotEmpty(t, md.MetricMetadata.Help)
 			assert.Equal(t, "unit", md.MetricMetadata.Unit)
-			mdMd = append(mdMd, md)
 		}
 	}
-	assert.ElementsMatch(t, mdMd, noMdMd)
+	// We remove items one by one in above comparison
+	assert.Empty(t, noMdMap)
 
 	results, err := parser.TransformPrwToOtel(context.Background(), mdPartitions)
 	assert.Nil(t, err)

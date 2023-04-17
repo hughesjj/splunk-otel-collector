@@ -2,3 +2,4 @@
 2. Okay, should I move "server" up out of internal?  Would totally get rid of config duplication issues..
 3. more testing
 4. defer Unlock?
+5. configurable suffixes and labels

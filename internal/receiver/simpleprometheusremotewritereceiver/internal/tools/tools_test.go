@@ -36,6 +36,12 @@ func TestGetMetricTypeByLabels(t *testing.T) {
 	}{
 		{
 			labels: []prompb.Label{
+				{Name: "__name__", Value: "http_requests_count"},
+			},
+			metricType: prompb.MetricMetadata_COUNTER,
+		},
+		{
+			labels: []prompb.Label{
 				{Name: "__name__", Value: "http_requests_total"},
 				{Name: "method", Value: "GET"},
 				{Name: "status", Value: "200"},
@@ -57,7 +63,21 @@ func TestGetMetricTypeByLabels(t *testing.T) {
 		},
 		{
 			labels: []prompb.Label{
-				{Name: "__name__", Value: "rpc_duration_seconds"},
+				{Name: "__name__", Value: "rpc_duration_seconds_total"},
+				{Name: "le", Value: "0.1"},
+			},
+			metricType: prompb.MetricMetadata_HISTOGRAM,
+		},
+		{
+			labels: []prompb.Label{
+				{Name: "__name__", Value: "rpc_duration_seconds_total"},
+				{Name: "quantile", Value: "0.5"},
+			},
+			metricType: prompb.MetricMetadata_SUMMARY,
+		},
+		{
+			labels: []prompb.Label{
+				{Name: "__name__", Value: "rpc_duration_total"},
 				{Name: "quantile", Value: "0.5"},
 			},
 			metricType: prompb.MetricMetadata_SUMMARY,
@@ -65,9 +85,9 @@ func TestGetMetricTypeByLabels(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		metricType := GetMetricTypeByLabels(&tc.labels)
+		metricType := GuessMetricTypeByLabels(&tc.labels)
 		if metricType != tc.metricType {
-			t.Errorf("GetMetricTypeByLabels(%v) = %v; want %v", tc.labels, metricType, tc.metricType)
+			t.Errorf("GuessMetricTypeByLabels(%v) = %v; want %v", tc.labels, metricType, tc.metricType)
 		}
 	}
 }

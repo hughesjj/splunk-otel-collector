@@ -45,13 +45,12 @@ func (prwParser *PrometheusRemoteOtelParser) FromPrometheusWriteRequestMetrics(c
 }
 
 type MetricData struct {
-	Labels           []prompb.Label
-	Samples          []prompb.Sample
-	Exemplars        []prompb.Exemplar
-	Histograms       []prompb.Histogram
-	MetricFamilyName string
-	MetricName       string
-	MetricMetadata   prompb.MetricMetadata
+	Labels         []prompb.Label
+	Samples        []prompb.Sample
+	Exemplars      []prompb.Exemplar
+	Histograms     []prompb.Histogram
+	MetricName     string
+	MetricMetadata prompb.MetricMetadata
 }
 
 type PrometheusRemoteOtelParser struct {
@@ -70,7 +69,8 @@ func NewPrwOtelParser(ctx context.Context, reporter transport.Reporter) (*Promet
 	}, nil
 }
 
-// See https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/13bcae344506fe2169b59d213361d04094c651f6/receiver/prometheusreceiver/internal/util.go#L106
+// The ordering of the timeseries in the WriteRequest(s) matters significantly.
+// Ex for histograms you need the metrics with an le attribute to appear first
 func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(ctx context.Context, writeReq *prompb.WriteRequest) (map[string][]MetricData, error) {
 	partitions := make(map[string][]MetricData)
 
@@ -92,7 +92,7 @@ func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(ctx context.C
 		// Determine metric type using cache if available, otherwise use label heuristics
 		metricMetadata, ok := prwParser.metricTypesCache.Get(metricName)
 		if !ok {
-			metricType := tools.GetMetricTypeByLabels(&ts.Labels)
+			metricType := tools.GuessMetricTypeByLabels(&ts.Labels)
 			metricMetadata = prwParser.metricTypesCache.AddHeuristic(metricName, prompb.MetricMetadata{
 				// Note we cannot inuit Help nor Unit from the labels
 				MetricFamilyName: metricFamilyName,
@@ -103,16 +103,17 @@ func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(ctx context.C
 		// Add the parsed time-series data to the corresponding partition
 		// Might be nice to freeze and assign MetricMetadata after this loop has had the chance to "maximally cache" it all
 		partitions[metricFamilyName] = append(partitions[metricFamilyName], MetricData{
-			Labels:           filteredLabels,
-			Samples:          ts.Samples,
-			Exemplars:        ts.Exemplars,
-			Histograms:       ts.Histograms,
-			MetricFamilyName: metricFamilyName,
-			MetricMetadata:   metricMetadata,
+			Labels:         filteredLabels,
+			Samples:        ts.Samples,
+			Exemplars:      ts.Exemplars,
+			Histograms:     ts.Histograms,
+			MetricName:     metricName,
+			MetricMetadata: metricMetadata,
 		})
 	}
 
 	for metricFamilyName, data := range partitions {
+		// TODO hughesjj wait do we even want this?
 		// I think there's a slim but nonzero chance we got a better read on the heuristics later on for a given metricFamilyName
 		metricMetadata, found := prwParser.metricTypesCache.Get(metricFamilyName)
 		if found {
@@ -142,6 +143,8 @@ func (prwParser *PrometheusRemoteOtelParser) TransformPrwToOtel(context context.
 	return metric, nil
 }
 
+// This actually converts from a prometheus prompdb.MetaDataType to the closest equivalent otel type
+// See https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/13bcae344506fe2169b59d213361d04094c651f6/receiver/prometheusreceiver/internal/util.go#L106
 func (prwParser *PrometheusRemoteOtelParser) addMetrics(context context.Context, rm pmetric.ResourceMetrics, family string, metrics []MetricData) error {
 	// TODO hughesjj cast to int if essentially int... maybe?  idk they do it in sfx.gateway
 	ilm := rm.ScopeMetrics().AppendEmpty()
@@ -157,6 +160,7 @@ func (prwParser *PrometheusRemoteOtelParser) addMetrics(context context.Context,
 		if metricsData.MetricName != "" {
 			nm.SetName(metricsData.MetricName)
 		} else {
+			// TODO hughesjj should prolly warn on this
 			nm.SetName(family)
 		}
 		switch metricType := metricsData.MetricMetadata.Type; metricType {

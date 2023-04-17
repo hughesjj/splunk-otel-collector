@@ -53,22 +53,38 @@ func GetMetricNameAndFilteredLabels(labels *[]prompb.Label) (string, []prompb.La
 	return metricName, filteredLabels
 }
 
-func GetMetricTypeByLabels(labels *[]prompb.Label) prompb.MetricMetadata_MetricType {
-	// TODO hughesjj actually assign the slice?
-	metricName, _ := GetMetricNameAndFilteredLabels(labels)
+// GuessMetricTypeByLabels This is a 'best effort' heuristic applying guidance from the latest OpenMetrics specification
+// See: https://raw.githubusercontent.com/OpenObservability/OpenMetrics/main/specification/OpenMetrics.md
+// As this is a heuristic process, the order of operations is SIGNIFICANT.
+func GuessMetricTypeByLabels(labels *[]prompb.Label) prompb.MetricMetadata_MetricType {
+	metricName, filteredLabels := GetMetricNameAndFilteredLabels(labels)
 
-	if strings.HasSuffix(metricName, "_total") || strings.HasSuffix(metricName, "_count") || strings.HasSuffix(metricName, "_counter") {
-		return prompb.MetricMetadata_COUNTER
-	}
-
-	for _, label := range *labels {
+	for _, label := range filteredLabels {
 		if label.Name == "le" {
 			return prompb.MetricMetadata_HISTOGRAM
 		}
-
 		if label.Name == "quantile" {
 			return prompb.MetricMetadata_SUMMARY
 		}
+		if label.Name == metricName {
+			// The OpenMetrics spec ABNF examples directly conflict with their own given summary, TODO inform them
+			return prompb.MetricMetadata_STATESET
+		}
+	}
+	if strings.HasSuffix(metricName, "_gsum") || strings.HasSuffix(metricName, "_gcount") {
+		// Of note is that 'le' should never appear in a metric label for this, but such is checked above
+		// ... also the ABNF part of the OpenMetrics spec directly conflicts with their leading summary
+		return prompb.MetricMetadata_GAUGEHISTOGRAM
+	}
+	if strings.HasSuffix(metricName, "_total") || strings.HasSuffix(metricName, "_count") || strings.HasSuffix(metricName, "_counter") || strings.HasSuffix(metricName, "_created") {
+		return prompb.MetricMetadata_COUNTER
+	}
+	if strings.HasSuffix(metricName, "_bucket") {
+		// While bucket may exist for a gauge histogram or Summary, we've checked such above
+		return prompb.MetricMetadata_HISTOGRAM
+	}
+	if strings.HasSuffix(metricName, "_info") {
+		return prompb.MetricMetadata_INFO
 	}
 	// TODO hughesjj okay should we ever return unknown?
 	return prompb.MetricMetadata_GAUGE
