@@ -44,7 +44,7 @@ func createMetricsReceiver(
 
 func createDefaultConfig() component.Config {
 	// config.NewReceiverSettings(config.NewComponentID(typeStr))
-	return Config{
+	return &Config{
 		Timeout: 30 * time.Second,
 		ListenAddr: confignet.NetAddr{
 			Endpoint:  "localhost:0", // Will randomize port!
