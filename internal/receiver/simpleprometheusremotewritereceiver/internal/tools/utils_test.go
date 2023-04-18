@@ -85,7 +85,7 @@ func TestGetMetricTypeByLabels(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		metricType := GuessMetricTypeByLabels(&tc.labels)
+		metricType := GuessMetricTypeByLabels(tc.labels)
 		if metricType != tc.metricType {
 			t.Errorf("GuessMetricTypeByLabels(%v) = %v; want %v", tc.labels, metricType, tc.metricType)
 		}

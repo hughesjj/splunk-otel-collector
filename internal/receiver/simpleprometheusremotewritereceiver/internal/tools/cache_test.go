@@ -56,13 +56,13 @@ func TestCacheAccessPatterns(t *testing.T) {
 	// Ensure latest is on there
 	value, exists := pmtCache.Get(strconv.Itoa(expectedCapacity))
 	assert.Truef(t, exists, "Missing most recently used from an LRU cache =(")
-	assert.Equal(t, prompb.MetricMetadata_COUNTER, value.Type)
-	assert.NotEmpty(t, value.MetricFamilyName)
+	og := prompb.MetricMetadata_MetricType(expectedCapacity % 4)
+	assert.Equal(t, og, value.Type)
 	assert.NotEmpty(t, value.MetricFamilyName)
 
 	// Ensure heuristic doesn't override an explicitly set metadata
-	value = pmtCache.AddHeuristic(strconv.Itoa(expectedCapacity), prompb.MetricMetadata{Type: prompb.MetricMetadata_HISTOGRAM})
-	assert.Equal(t, prompb.MetricMetadata_COUNTER, value.Type)
+	value = pmtCache.AddHeuristic(strconv.Itoa(expectedCapacity), prompb.MetricMetadata{Type: prompb.MetricMetadata_MetricType((expectedCapacity + 1) % 4)})
+	assert.Equal(t, og, value.Type)
 	assert.NotEmpty(t, value.MetricFamilyName)
 
 	// as an initial value it's fine to add it
@@ -71,9 +71,16 @@ func TestCacheAccessPatterns(t *testing.T) {
 	assert.NotEmpty(t, value.MetricFamilyName)
 
 	// It should be overridden by any Explicit metadata though
-	value = pmtCache.AddMetadata("HeuristicFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_HISTOGRAM})
+	value = pmtCache.AddMetadata("HeuristicFirst", prompb.MetricMetadata{
+		Type:             prompb.MetricMetadata_HISTOGRAM,
+		Unit:             "G",
+		Help:             "!!!",
+		MetricFamilyName: "HeuristicFirst",
+	})
 	assert.Equal(t, prompb.MetricMetadata_HISTOGRAM, value.Type)
 	assert.NotEmpty(t, value.MetricFamilyName)
+	assert.NotEmpty(t, value.Unit)
+	assert.NotEmpty(t, value.Help)
 
 	// If they give us conflicting explicit metadata, we should trust their latest
 	value = pmtCache.AddMetadata("HeuristicFirst", prompb.MetricMetadata{Type: prompb.MetricMetadata_SUMMARY})

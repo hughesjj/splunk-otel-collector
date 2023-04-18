@@ -45,12 +45,13 @@ func (prwParser *PrometheusRemoteOtelParser) FromPrometheusWriteRequestMetrics(c
 }
 
 type MetricData struct {
+	MetricName     string
 	Labels         []prompb.Label
 	Samples        []prompb.Sample
 	Exemplars      []prompb.Exemplar
 	Histograms     []prompb.Histogram
-	MetricName     string
 	MetricMetadata prompb.MetricMetadata
+	FromMd         bool
 }
 
 type PrometheusRemoteOtelParser struct {
@@ -80,25 +81,22 @@ func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(ctx context.C
 		return nil, err
 	}
 
-	// update cache with any metric data found
+	// update cache with any metric data found.  Do this before processing any data to avoid incorrect heuristics.
 	for _, metadata := range writeReq.Metadata {
 		prwParser.metricTypesCache.AddMetadata(metadata.MetricFamilyName, metadata)
 	}
-
+	// TODO hughesjj so wait.... Are there any guarantees about the length of Metadata w.r.t TimeSeries?
 	for _, ts := range writeReq.Timeseries {
-		metricName, filteredLabels := tools.GetMetricNameAndFilteredLabels(&ts.Labels)
+		metricName, filteredLabels := tools.GetMetricNameAndFilteredLabels(ts.Labels)
 		metricFamilyName := tools.GetBaseMetricFamilyName(metricName)
 
 		// Determine metric type using cache if available, otherwise use label heuristics
-		metricMetadata, ok := prwParser.metricTypesCache.Get(metricName)
-		if !ok {
-			metricType := tools.GuessMetricTypeByLabels(&ts.Labels)
-			metricMetadata = prwParser.metricTypesCache.AddHeuristic(metricName, prompb.MetricMetadata{
-				// Note we cannot inuit Help nor Unit from the labels
-				MetricFamilyName: metricFamilyName,
-				Type:             metricType,
-			})
-		}
+		metricType := tools.GuessMetricTypeByLabels(ts.Labels)
+		metricMetadata := prwParser.metricTypesCache.AddHeuristic(metricName, prompb.MetricMetadata{
+			// Note we cannot intuit Help nor Unit from the labels
+			MetricFamilyName: metricFamilyName,
+			Type:             metricType,
+		})
 
 		// Add the parsed time-series data to the corresponding partition
 		// Might be nice to freeze and assign MetricMetadata after this loop has had the chance to "maximally cache" it all
@@ -111,7 +109,7 @@ func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(ctx context.C
 			MetricMetadata: metricMetadata,
 		})
 	}
-
+	// TODO hughesjj so... should we sort on quantiles etc here?
 	for metricFamilyName, data := range partitions {
 		// TODO hughesjj wait do we even want this?
 		// I think there's a slim but nonzero chance we got a better read on the heuristics later on for a given metricFamilyName

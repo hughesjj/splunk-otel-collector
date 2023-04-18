@@ -28,7 +28,7 @@ func GetBaseMetricFamilyName(metricName string) string {
 	// "metric family names" in the same write request, so this should be safe
 	// https://prometheus.io/docs/practices/naming/
 	// https://prometheus.io/docs/concepts/metric_types/
-	suffixes := []string{"_count", "_sum", "_bucket", "_created"}
+	suffixes := []string{"_count", "_sum", "_bucket", "_created", "_total"}
 	for _, suffix := range suffixes {
 		if strings.HasSuffix(metricName, suffix) {
 			metricName = strings.TrimSuffix(metricName, suffix)
@@ -38,11 +38,11 @@ func GetBaseMetricFamilyName(metricName string) string {
 
 	return metricName
 }
-func GetMetricNameAndFilteredLabels(labels *[]prompb.Label) (string, []prompb.Label) {
+func GetMetricNameAndFilteredLabels(labels []prompb.Label) (string, []prompb.Label) {
 	metricName := ""
 	var filteredLabels []prompb.Label
 
-	for _, label := range *labels {
+	for _, label := range labels {
 		if label.Name == "__name__" {
 			metricName = label.Value
 		} else {
@@ -56,12 +56,18 @@ func GetMetricNameAndFilteredLabels(labels *[]prompb.Label) (string, []prompb.La
 // GuessMetricTypeByLabels This is a 'best effort' heuristic applying guidance from the latest OpenMetrics specification
 // See: https://raw.githubusercontent.com/OpenObservability/OpenMetrics/main/specification/OpenMetrics.md
 // As this is a heuristic process, the order of operations is SIGNIFICANT.
-func GuessMetricTypeByLabels(labels *[]prompb.Label) prompb.MetricMetadata_MetricType {
+func GuessMetricTypeByLabels(labels []prompb.Label) prompb.MetricMetadata_MetricType {
 	metricName, filteredLabels := GetMetricNameAndFilteredLabels(labels)
 
+	var histogramType = prompb.MetricMetadata_HISTOGRAM
+
+	if strings.HasSuffix(metricName, "_gsum") || strings.HasSuffix(metricName, "_gcount") {
+		// Should also have an LE
+		histogramType = prompb.MetricMetadata_GAUGEHISTOGRAM
+	}
 	for _, label := range filteredLabels {
 		if label.Name == "le" {
-			return prompb.MetricMetadata_HISTOGRAM
+			return histogramType
 		}
 		if label.Name == "quantile" {
 			return prompb.MetricMetadata_SUMMARY
@@ -70,11 +76,6 @@ func GuessMetricTypeByLabels(labels *[]prompb.Label) prompb.MetricMetadata_Metri
 			// The OpenMetrics spec ABNF examples directly conflict with their own given summary, TODO inform them
 			return prompb.MetricMetadata_STATESET
 		}
-	}
-	if strings.HasSuffix(metricName, "_gsum") || strings.HasSuffix(metricName, "_gcount") {
-		// Of note is that 'le' should never appear in a metric label for this, but such is checked above
-		// ... also the ABNF part of the OpenMetrics spec directly conflicts with their leading summary
-		return prompb.MetricMetadata_GAUGEHISTOGRAM
 	}
 	if strings.HasSuffix(metricName, "_total") || strings.HasSuffix(metricName, "_count") || strings.HasSuffix(metricName, "_counter") || strings.HasSuffix(metricName, "_created") {
 		return prompb.MetricMetadata_COUNTER

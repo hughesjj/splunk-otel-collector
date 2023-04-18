@@ -16,6 +16,7 @@ package prw
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -100,6 +101,7 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())
 	noMdPartitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequests)
 	require.NoError(t, err)
+	require.Empty(t, sampleWriteRequests.Metadata, "NoMetadata (heuristical) portion of test contains metadata")
 
 	noMdMap := make(map[string]map[string][]MetricData)
 	for key, partition := range noMdPartitions {
@@ -125,24 +127,35 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	mdPartitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequestsMd)
 	require.NoError(t, err)
 	for key, partition := range mdPartitions {
-		for _, md := range partition {
+		for _, metricData := range partition {
 			assert.NotEmpty(t, key)
-			assert.Equal(t, key, md.MetricMetadata.MetricFamilyName)
-			assert.NotEmpty(t, md.MetricName)
-			assert.Equalf(t, key, md.MetricMetadata.MetricFamilyName, "%s was not %s.  metricname: %s, metric type: %d", key, md.MetricMetadata.MetricFamilyName, md.MetricName, md.MetricMetadata.Type) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?
-			noMetadataItem := noMdMap[key][md.MetricName][0]
-			noMdMap[key][md.MetricName] = noMdMap[key][md.MetricName][1:]
-			if len(noMdMap[key][md.MetricName]) == 0 {
-				delete(noMdMap[key], md.MetricName)
+			assert.Equalf(t, key, metricData.MetricMetadata.MetricFamilyName, "%s was not %s.  metricname: %s, metric type: %d", key, metricData.MetricMetadata.MetricFamilyName, metricData.MetricName, metricData.MetricMetadata.Type) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?
+			assert.NotEmpty(t, metricData.MetricName)
+			assert.True(t, strings.HasPrefix(metricData.MetricName, metricData.MetricMetadata.MetricFamilyName))
+			noMetadataMetricItem := noMdMap[key][metricData.MetricName][0]
+			noMdMap[key][metricData.MetricName] = noMdMap[key][metricData.MetricName][1:]
+			if len(noMdMap[key][metricData.MetricName]) == 0 {
+				delete(noMdMap[key], metricData.MetricName)
 			}
 			if len(noMdMap[key]) == 0 {
 				delete(noMdMap, key)
 			}
-			assert.Equalf(t, noMetadataItem.MetricName, md.MetricName, "%s was not %s.  family: %s, metric type: %s", noMetadataItem.MetricName, md.MetricName, md.MetricMetadata.MetricFamilyName, md.MetricMetadata.Type.String()) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
-			assert.Equalf(t, noMetadataItem.MetricMetadata.Type, md.MetricMetadata.Type, "%s was not %s.  metricname: %s", noMetadataItem.MetricMetadata.Type, md.MetricMetadata.Type.String(), md.MetricName)                       // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
-			assert.Equal(t, noMetadataItem.MetricMetadata.MetricFamilyName, md.MetricMetadata.MetricFamilyName)
-			assert.NotEmpty(t, md.MetricMetadata.Help)
-			assert.Equal(t, "unit", md.MetricMetadata.Unit)
+			assert.Equalf(t, noMetadataMetricItem.MetricName, metricData.MetricName, "%s was not %s.  family: %s, metric type: %s", noMetadataMetricItem.MetricName, metricData.MetricName, metricData.MetricMetadata.MetricFamilyName, metricData.MetricMetadata.Type.String()) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
+			cachedMd, _ := parser.metricTypesCache.Get(metricData.MetricName)
+			assert.Equalf(t, cachedMd.Type, metricData.MetricMetadata.Type, "%s was not %s.  metricname: %s", cachedMd.Type, metricData.MetricMetadata.Type.String(), metricData.MetricName)                                                                     // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
+			equalTypes := assert.Equalf(t, noMetadataMetricItem.MetricMetadata.Type, metricData.MetricMetadata.Type, "%s was not %s.  metricname: %s", noMetadataMetricItem.MetricMetadata.Type, metricData.MetricMetadata.Type.String(), metricData.MetricName) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
+			if !equalTypes {
+				assert.Equal(t, noMetadataMetricItem.Labels, metricData.Labels)
+				// aight... so neither AddHeuristic nor AddMetadata is being called let alone add metadata
+				// pushed := parser.metricTypesCache.AddHeuristic(metricData.MetricMetadata.MetricFamilyName, metricData.MetricMetadata)
+				pushed := parser.metricTypesCache.AddMetadata(metricData.MetricMetadata.MetricFamilyName, metricData.MetricMetadata)
+				cachedMd, _ = parser.metricTypesCache.Get(metricData.MetricName)
+				assert.Equalf(t, cachedMd.Type, metricData.MetricMetadata.Type, "%s was not %s.  metricname: %s", cachedMd.Type, metricData.MetricMetadata.Type.String(), metricData.MetricName) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
+				assert.Equal(t, metricData.MetricMetadata.Type, pushed.Type)
+			}
+			assert.Equal(t, noMetadataMetricItem.MetricMetadata.MetricFamilyName, metricData.MetricMetadata.MetricFamilyName)
+			assert.NotEmpty(t, metricData.MetricMetadata.Help)
+			assert.Equal(t, "unit", metricData.MetricMetadata.Unit)
 		}
 	}
 	// We remove items one by one in above comparison
@@ -153,6 +166,7 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	assert.NotNil(t, results)
 
 }
+
 func TestFromWriteRequest(t *testing.T) {
 	expectedCalls := 1
 	reporter := NewMockReporter(expectedCalls)

@@ -22,25 +22,40 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 )
 
+type setFrom uint8
+
+// iota in ascending order of confidence
+const (
+	Unset setFrom = iota
+	Heuristic
+	Metadata
+)
+
+type MetadataCache struct {
+	prompb.MetricMetadata
+	MetadataSource setFrom
+}
+
 type PrometheusMetricTypeCache struct {
-	prwMdCache *cache.Cache[string, prompb.MetricMetadata]
+	prwMdCache *cache.Cache[string, MetadataCache]
 }
 
 func NewPrometheusMetricTypeCache(ctx context.Context, capacity int) *PrometheusMetricTypeCache {
-	lruCache := cache.NewContext(ctx, cache.AsLRU[string, prompb.MetricMetadata](lru.WithCapacity(capacity)))
+	lruCache := cache.NewContext(ctx, cache.AsLRU[string, MetadataCache](lru.WithCapacity(capacity)))
 	return &PrometheusMetricTypeCache{
 		prwMdCache: lruCache,
 	}
 }
 
-func CoalesceMetadata(mds ...prompb.MetricMetadata) prompb.MetricMetadata {
-	var result prompb.MetricMetadata
+func CoalesceAndMergeMetadata(mds ...MetadataCache) MetadataCache {
+	var result MetadataCache
 	for _, md := range mds {
 		if result.Unit == "" {
 			result.Unit = md.Unit
 		}
-		if result.Type == prompb.MetricMetadata_UNKNOWN {
+		if result.Type == prompb.MetricMetadata_UNKNOWN || result.MetadataSource <= md.MetadataSource && (result.Type == prompb.MetricMetadata_GAUGE || result.Type == prompb.MetricMetadata_COUNTER) && (md.Type == prompb.MetricMetadata_HISTOGRAM || md.Type == prompb.MetricMetadata_GAUGEHISTOGRAM || md.Type == prompb.MetricMetadata_SUMMARY) {
 			result.Type = md.Type
+			result.MetadataSource = md.MetadataSource
 		}
 		if result.Help == "" {
 			result.Help = md.Help
@@ -54,37 +69,47 @@ func CoalesceMetadata(mds ...prompb.MetricMetadata) prompb.MetricMetadata {
 
 func (prwCache *PrometheusMetricTypeCache) AddMetadata(metricFamily string, metadata prompb.MetricMetadata) prompb.MetricMetadata {
 	// TODO hughesjj If the old metricfamily is bunk, gotta update I suppose?   link them?
-	// If metricFamily (as parsed from dealio) does not match expectd metadata.MetricFamilyName, we gotta cross link them
+	// If metricFamily (as parsed from dealio) does not match expected metadata.MetricFamilyName, we gotta cross link them
 	// alternatively, we could do metricName (instead of metric family name) -> metricFamilyName
 	// really we just wanna merge right? like upsert
 	if metadata.MetricFamilyName == "" {
 		metadata.MetricFamilyName = metricFamily
 	}
-	heuristic, _ := prwCache.Get(metricFamily)
-	explicit, _ := prwCache.Get(metadata.MetricFamilyName)
-	metadata = CoalesceMetadata(metadata, explicit, heuristic)
-	if metadata.MetricFamilyName != metricFamily {
-		prwCache.prwMdCache.Set(metadata.MetricFamilyName, metadata)
+	md := MetadataCache{
+		MetricMetadata: metadata,
+		MetadataSource: Metadata,
 	}
-	prwCache.prwMdCache.Set(metricFamily, metadata)
+	heuristic, _ := prwCache.prwMdCache.Get(metricFamily)
+	explicit, _ := prwCache.prwMdCache.Get(metadata.MetricFamilyName)
+	md = CoalesceAndMergeMetadata(md, explicit, heuristic)
+	if md.MetricMetadata.MetricFamilyName != metricFamily {
+		prwCache.prwMdCache.Set(metadata.MetricFamilyName, md)
+	}
+	prwCache.prwMdCache.Set(metricFamily, md)
 	cached, _ := prwCache.Get(metricFamily)
 	return cached
 }
 
 func (prwCache *PrometheusMetricTypeCache) AddHeuristic(metricFamily string, metadata prompb.MetricMetadata) prompb.MetricMetadata {
+	// TODO what if metricFamily is not metdata.MetricFamilyName?
 	if metadata.MetricFamilyName == "" {
 		metadata.MetricFamilyName = metricFamily
 	}
 	mf, exists := prwCache.prwMdCache.Get(metricFamily)
+	md := MetadataCache{
+		MetricMetadata: metadata,
+		MetadataSource: Heuristic,
+	}
 	if !exists {
-		prwCache.prwMdCache.Set(metricFamily, metadata)
+		prwCache.prwMdCache.Set(metricFamily, md)
 	} else {
-		prwCache.prwMdCache.Set(metricFamily, CoalesceMetadata(mf, metadata))
+		prwCache.prwMdCache.Set(metricFamily, CoalesceAndMergeMetadata(mf, md))
 	}
 	result, _ := prwCache.Get(metricFamily)
 	return result
 }
 
 func (prwCache *PrometheusMetricTypeCache) Get(metricFamily string) (prompb.MetricMetadata, bool) {
-	return prwCache.prwMdCache.Get(metricFamily)
+	a, exists := prwCache.prwMdCache.Get(metricFamily)
+	return a.MetricMetadata, exists
 }
