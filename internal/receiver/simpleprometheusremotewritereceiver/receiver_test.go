@@ -37,7 +37,7 @@ func TestHappy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cfg := createDefaultConfig().(Config)
+	cfg := createDefaultConfig().(*Config)
 	freePort, err := transport.GetFreePort()
 	require.Nil(t, err)
 

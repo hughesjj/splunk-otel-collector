@@ -38,15 +38,15 @@ type simplePrometheusWriteReceiver struct {
 	reporter     transport.Reporter
 	nextConsumer consumer.Metrics
 	cancel       context.CancelFunc
+	config       *Config
 	settings     receiver.CreateSettings
-	config       Config
 	sync.Mutex
 }
 
 // New creates the PrometheusRemoteWrite receiver with the given parameters.
 func New(
 	settings receiver.CreateSettings,
-	config Config,
+	config *Config,
 	nextConsumer consumer.Metrics,
 ) (receiver.Metrics, error) {
 	if nextConsumer == nil {
