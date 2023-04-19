@@ -32,7 +32,11 @@ const (
 type Config struct {
 	// TODO the other guy has some really cool stuff in here
 	ListenAddr confignet.NetAddr `mapstructure:",squash"`
-	ListenPath string            `mapstructure:",squash"`
-	Timeout    time.Duration     `mapstructure:",squash"`
-	BufferSize int               // Channel buffer size, defaults to blocking each request until processed
+	ListenPath string            `mapstructure:"path"`
+	Timeout    time.Duration     `mapstructure:"timeout_seconds"`
+	BufferSize int               `mapstructure:"buffer_size"` // Channel buffer size, defaults to blocking each request until processed
+}
+
+func (c *Config) Validate() error {
+	return nil
 }

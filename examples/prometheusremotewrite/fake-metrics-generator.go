@@ -18,7 +18,7 @@ func main() {
 		{
 			Labels: []prompb.Label{
 				{Name: "__name__", Value: "fake_metric_total"},
-				{Name: "instance", Value: "localhost:8080"},
+				{Name: "instance", Value: "localhost:54090"},
 			},
 			Samples: []prompb.Sample{
 				{Value: 42, Timestamp: time.Now().UnixNano() / int64(time.Millisecond)},
@@ -40,7 +40,7 @@ func main() {
 
 	targetURL := os.Getenv("TARGET_URL")
 	if targetURL == "" {
-		targetURL = "http://otelcollector:8888/metrics"
+		targetURL = "http://otelcollector:54090/metrics"
 	}
 
 	// Continuously send fake metrics
