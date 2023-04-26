@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/prometheus/storage/remote"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -38,11 +39,12 @@ type ServerConfig struct {
 	component.TelemetrySettings
 	Path string
 	confighttp.HTTPServerSettings
+	Parser *PrometheusRemoteOtelParser
 }
 
 func newPrometheusRemoteWriteServer(ctx context.Context, config *ServerConfig) (*prometheusRemoteWriteServer, error) {
 	mx := mux.NewRouter()
-	handler := newHandler(ctx, config.Reporter, config, config.Mc)
+	handler := newHandler(ctx, config.Parser, config, config.Mc)
 	mx.HandleFunc(config.Path, handler)
 	mx.Host(config.Endpoint)
 	server, err := config.HTTPServerSettings.ToServer(config.Host, config.TelemetrySettings, handler)
@@ -77,11 +79,27 @@ func (prw *prometheusRemoteWriteServer) ListenAndServe() error {
 	return err
 }
 
-func newHandler(ctx context.Context, reporter reporter, _ *ServerConfig, _ chan<- pmetric.Metrics) http.HandlerFunc {
+func newHandler(ctx context.Context, parser *PrometheusRemoteOtelParser, sc *ServerConfig, mc chan<- pmetric.Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// THIS IS A STUB FUNCTION.  You can see another branch with how I'm thinking this will look if you're curious
-		ctx2 := reporter.StartMetricsOp(ctx)
-		reporter.OnMetricsProcessed(ctx2, 0, nil)
+		ctx2 := sc.Reporter.StartMetricsOp(ctx)
+		req, err := remote.DecodeWriteRequest(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		results, err := parser.FromPrometheusWriteRequestMetrics(ctx2, req)
+		if nil != err {
+			// Prolly server side errors too
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			sc.Reporter.OnError(ctx2, "prometheus_translation", err)
+			return
+		}
+		mc <- results // TODO hughesjj well, I think it might break here for some reason?
+		// In anticipation of eventually better supporting backpressure, return 202 instead of 204
+		// eh actually the prometheus remote write client doesn't support non 204...
+		// w.WriteHeader(http.StatusAccepted)
+		sc.Reporter.OnMetricsProcessed(ctx2, 0, nil)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
