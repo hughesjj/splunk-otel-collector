@@ -37,6 +37,11 @@ type mockReporter struct {
 
 var _ reporter = (*mockReporter)(nil)
 
+func helperIntP(y int32) *int32 {
+	x := new(int32)
+	*x = y
+	return x
+}
 func (m *mockReporter) AddExpectedError(newCalls int) int {
 	atomic.AddInt32(m.OpsFailed, int32(newCalls))
 	atomic.AddInt32(m.TotalCalls, int32(newCalls))
@@ -57,7 +62,15 @@ func (m *mockReporter) AddExpectedStart(newCalls int) int {
 
 // newMockReporter returns a new instance of a mockReporter.
 func newMockReporter(expectedOpStartedCalls int) *mockReporter {
-	m := mockReporter{}
+	m := mockReporter{
+		OpsStarted:         helperIntP(0),
+		OpsSuccess:         helperIntP(0),
+		OpsFailed:          helperIntP(0),
+		OpsSuccessComplete: helperIntP(0),
+		OpsStartedComplete: helperIntP(0),
+		OpsFailedComplete:  helperIntP(0),
+		TotalCalls:         helperIntP(0),
+	}
 	atomic.AddInt32(m.OpsStarted, int32(expectedOpStartedCalls))
 	atomic.AddInt32(m.TotalCalls, int32(expectedOpStartedCalls))
 	return &m

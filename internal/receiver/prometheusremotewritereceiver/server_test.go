@@ -35,6 +35,8 @@ func TestWriteEmpty(t *testing.T) {
 	freePort, err := GetFreePort()
 	require.NoError(t, err)
 	expectedEndpoint := fmt.Sprintf("localhost:%d", freePort)
+	parser, err := NewPrwOtelParser(context.Background(), reporter, 1)
+	require.NoError(t, err)
 	cfg := &ServerConfig{
 		Path:     "/metrics",
 		Reporter: reporter,
@@ -42,6 +44,7 @@ func TestWriteEmpty(t *testing.T) {
 		HTTPServerSettings: confighttp.HTTPServerSettings{
 			Endpoint: expectedEndpoint,
 		},
+		Parser: parser,
 	}
 	require.Equal(t, expectedEndpoint, cfg.Endpoint)
 

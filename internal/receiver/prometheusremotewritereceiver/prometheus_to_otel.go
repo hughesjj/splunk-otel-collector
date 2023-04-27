@@ -35,6 +35,7 @@ func (prwParser *PrometheusRemoteOtelParser) FromPrometheusWriteRequestMetrics(c
 	if nil == err {
 		otelMetrics, err = prwParser.TransformPrwToOtel(ctx, metricFamiliesAndData)
 		if nil == err {
+			// TODO question is... is Reporter nil or is -- oh no it's context definitely context
 			prwParser.Reporter.OnMetricsProcessed(ctx, otelMetrics.DataPointCount(), err)
 		} else {
 			prwParser.Reporter.OnError(ctx, "prometheus_translation", err)
