@@ -16,8 +16,8 @@ package prometheusremotewritereceiver
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -25,69 +25,58 @@ import (
 // mockReporter provides a reporter that provides some useful functionalities for
 // tests (e.g.: wait for certain number of messages).
 type mockReporter struct {
-	TotalCalls         *int32
-	OpsSuccess         *int32
-	OpsStarted         *int32
-	OpsFailed          *int32
-	OpsSuccessComplete *int32
-	OpsStartedComplete *int32
-	OpsFailedComplete  *int32
-	Errors             []error
+	TotalSuccessMetrics *int32
+	OpsSuccess          *sync.WaitGroup
+	OpsStarted          *sync.WaitGroup
+	OpsFailed           *sync.WaitGroup
+	Errors              []error
 }
 
 var _ reporter = (*mockReporter)(nil)
 
-func helperIntP(y int32) *int32 {
-	x := new(int32)
-	*x = y
-	return x
-}
 func (m *mockReporter) AddExpectedError(newCalls int) int {
-	atomic.AddInt32(m.OpsFailed, int32(newCalls))
-	atomic.AddInt32(m.TotalCalls, int32(newCalls))
-	return int(atomic.LoadInt32(m.TotalCalls))
+	m.OpsFailed.Add(newCalls)
+	atomic.AddInt32(m.TotalSuccessMetrics, int32(newCalls))
+	return int(atomic.LoadInt32(m.TotalSuccessMetrics))
 }
 
 func (m *mockReporter) AddExpectedSuccess(newCalls int) int {
-	atomic.AddInt32(m.OpsSuccess, int32(newCalls))
-	atomic.AddInt32(m.TotalCalls, int32(newCalls))
-	return int(atomic.LoadInt32(m.TotalCalls))
+	m.OpsSuccess.Add(newCalls)
+	atomic.AddInt32(m.TotalSuccessMetrics, int32(newCalls))
+	return int(atomic.LoadInt32(m.TotalSuccessMetrics))
 }
 
 func (m *mockReporter) AddExpectedStart(newCalls int) int {
-	atomic.AddInt32(m.OpsStarted, int32(newCalls))
-	atomic.AddInt32(m.TotalCalls, int32(newCalls))
-	return int(atomic.LoadInt32(m.TotalCalls))
+	m.OpsStarted.Add(newCalls)
+	atomic.AddInt32(m.TotalSuccessMetrics, int32(newCalls))
+	return int(atomic.LoadInt32(m.TotalSuccessMetrics))
 }
 
 // newMockReporter returns a new instance of a mockReporter.
-func newMockReporter(expectedOpStartedCalls int) *mockReporter {
+func newMockReporter(_ int) *mockReporter {
+	successCalls := new(int32)
 	m := mockReporter{
-		OpsStarted:         helperIntP(0),
-		OpsSuccess:         helperIntP(0),
-		OpsFailed:          helperIntP(0),
-		OpsSuccessComplete: helperIntP(0),
-		OpsStartedComplete: helperIntP(0),
-		OpsFailedComplete:  helperIntP(0),
-		TotalCalls:         helperIntP(0),
+		OpsSuccess:          &sync.WaitGroup{},
+		OpsFailed:           &sync.WaitGroup{},
+		OpsStarted:          &sync.WaitGroup{},
+		TotalSuccessMetrics: successCalls,
 	}
-	atomic.AddInt32(m.OpsStarted, int32(expectedOpStartedCalls))
-	atomic.AddInt32(m.TotalCalls, int32(expectedOpStartedCalls))
 	return &m
 }
 
 func (m *mockReporter) StartMetricsOp(ctx context.Context) context.Context {
-	atomic.AddInt32(m.OpsStartedComplete, 1)
+	m.OpsStarted.Done()
 	return ctx
 }
 
 func (m *mockReporter) OnError(_ context.Context, _ string, err error) {
 	m.Errors = append(m.Errors, err)
-	atomic.AddInt32(m.OpsFailedComplete, 1)
+	m.OpsFailed.Done()
 }
 
 func (m *mockReporter) OnMetricsProcessed(_ context.Context, numReceivedMessages int, _ error) {
-	atomic.AddInt32(m.OpsSuccessComplete, int32(numReceivedMessages))
+	atomic.AddInt32(m.TotalSuccessMetrics, int32(numReceivedMessages))
+	m.OpsStarted.Done()
 }
 
 func (m *mockReporter) OnDebugf(template string, args ...interface{}) {
@@ -99,21 +88,34 @@ func (m *mockReporter) OnDebugf(template string, args ...interface{}) {
 func (m *mockReporter) WaitAllOnMetricsProcessedCalls(timeout time.Duration) error {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
 	defer cancel()
+	allDone := &sync.WaitGroup{}
+	allDone.Add(3)
+	var done []string
 
 	go func() {
-		totalExpected := atomic.LoadInt32(m.OpsSuccess) + atomic.LoadInt32(m.OpsFailed) + atomic.LoadInt32(m.OpsStarted)
-		total := atomic.LoadInt32(m.OpsSuccessComplete) + atomic.LoadInt32(m.OpsFailedComplete) + atomic.LoadInt32(m.OpsStartedComplete)
-		if total == totalExpected {
-			cancel()
-		} else {
-			time.Sleep(time.Second)
-		}
+		m.OpsFailed.Wait()
+		allDone.Done()
+		done = append(done, "done with failed")
+	}()
+	go func() {
+		m.OpsSuccess.Wait()
+		allDone.Done()
+		done = append(done, "done with success")
+	}()
+	go func() {
+		m.OpsStarted.Wait()
+		allDone.Done()
+		done = append(done, "done with started")
+	}()
+	go func() {
+		allDone.Wait()
+		cancel()
 	}()
 
 	for {
 		select {
 		case <-time.After(timeout):
-			return errors.New("took too long to return")
+			return fmt.Errorf("took too long to return. Ones that did: %s", done)
 		case <-ctx.Done():
 			return nil
 		}

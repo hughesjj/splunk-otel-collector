@@ -31,7 +31,7 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 	expectedCalls := 1
 	reporter := newMockReporter(expectedCalls)
 	require.NotNil(t, reporter)
-	parser, err := NewPrwOtelParser(context.Background(), reporter, 100)
+	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.GetWriteRequests()
@@ -63,7 +63,7 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 	expectedCalls := 1
 	reporter := newMockReporter(expectedCalls)
 	require.NotNil(t, reporter)
-	parser, err := NewPrwOtelParser(context.Background(), reporter, 100)
+	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.GetWriteRequests()
@@ -86,7 +86,7 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 				assert.Equal(t, md.MetricMetadata.MetricFamilyName, key)
 			}
 		}
-		results, err := parser.TransformPrwToOtel(context.Background(), partitions)
+		results, err := parser.TransformPrwToOtel(partitions)
 		assert.Nil(t, err)
 		assert.NotNil(t, results)
 	}
@@ -97,7 +97,7 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	expectedCalls := 1
 	reporter := newMockReporter(expectedCalls)
 	require.NotNil(t, reporter)
-	parser, err := NewPrwOtelParser(context.Background(), reporter, 100)
+	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())
@@ -161,22 +161,22 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	// We remove items one by one in above comparison
 	assert.Empty(t, noMdMap)
 
-	results, err := parser.TransformPrwToOtel(context.Background(), mdPartitions)
+	results, err := parser.TransformPrwToOtel(mdPartitions)
 	assert.Nil(t, err)
 	assert.NotNil(t, results)
 
 }
 
 func TestFromWriteRequest(t *testing.T) {
-	expectedCalls := 100
-	reporter := newMockReporter(expectedCalls)
+	reporter := newMockReporter(0)
 	require.NotNil(t, reporter)
-	parser, err := NewPrwOtelParser(context.Background(), reporter, 100)
+	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())
 	// TODO maybe add a recover on this
-	reporter.AddExpectedSuccess(100)
+	reporter.AddExpectedStart(len(sampleWriteRequests.Timeseries))
+	reporter.AddExpectedSuccess(len(sampleWriteRequests.Timeseries))
 	metrics, err := parser.FromPrometheusWriteRequestMetrics(context.Background(), sampleWriteRequests)
 	require.Nil(t, err)
 	require.NotNil(t, metrics)

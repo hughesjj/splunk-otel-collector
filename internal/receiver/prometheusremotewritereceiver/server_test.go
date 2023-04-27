@@ -31,15 +31,15 @@ import (
 func TestWriteEmpty(t *testing.T) {
 	mc := make(chan<- pmetric.Metrics)
 	timeout := 5 * time.Second
-	reporter := newMockReporter(1)
+	mockReporter := newMockReporter(1)
 	freePort, err := GetFreePort()
 	require.NoError(t, err)
 	expectedEndpoint := fmt.Sprintf("localhost:%d", freePort)
-	parser, err := NewPrwOtelParser(context.Background(), reporter, 1)
+	parser, err := NewPrwOtelParser(context.Background(), 1)
 	require.NoError(t, err)
 	cfg := &ServerConfig{
 		Path:     "/metrics",
-		Reporter: reporter,
+		Reporter: mockReporter,
 		Mc:       mc,
 		HTTPServerSettings: confighttp.HTTPServerSettings{
 			Endpoint: expectedEndpoint,
@@ -68,11 +68,14 @@ func TestWriteEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, client)
 	time.Sleep(100 * time.Millisecond)
+	mockReporter.AddExpectedStart(1)
+	mockReporter.AddExpectedSuccess(1)
 	require.NoError(t, client.SendWriteRequest(&prompb.WriteRequest{
 		Timeseries: []prompb.TimeSeries{},
 		Metadata:   []prompb.MetricMetadata{},
 	}))
 
+	require.NoError(t, mockReporter.WaitAllOnMetricsProcessedCalls(time.Second*2))
 	require.NoError(t, receiver.Shutdown(ctx))
-	require.Eventually(t, func() bool { wg.Wait(); return true }, time.Second*10, time.Second)
+	require.Eventually(t, func() bool { wg.Wait(); return true }, time.Second*2, 100*time.Millisecond)
 }

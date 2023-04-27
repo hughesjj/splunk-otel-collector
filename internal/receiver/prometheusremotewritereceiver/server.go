@@ -81,7 +81,7 @@ func (prw *prometheusRemoteWriteServer) ListenAndServe() error {
 
 func newHandler(ctx context.Context, parser *PrometheusRemoteOtelParser, sc *ServerConfig, mc chan<- pmetric.Metrics) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// THIS IS A STUB FUNCTION.  You can see another branch with how I'm thinking this will look if you're curious
+		w.WriteHeader(http.StatusNoContent) // TODO move this around mc for breakage in mc..... okay something's fucky
 		ctx2 := sc.Reporter.StartMetricsOp(ctx)
 		req, err := remote.DecodeWriteRequest(r.Body)
 		if err != nil {
@@ -95,11 +95,11 @@ func newHandler(ctx context.Context, parser *PrometheusRemoteOtelParser, sc *Ser
 			sc.Reporter.OnError(ctx2, "prometheus_translation", err)
 			return
 		}
-		mc <- results // TODO hughesjj well, I think it might break here for some reason?
+		w.WriteHeader(http.StatusNoContent) // TODO move this around mc for breakage in mc
+		mc <- results                       // TODO hughesjj well, I think it might break here for some reason?
 		// In anticipation of eventually better supporting backpressure, return 202 instead of 204
 		// eh actually the prometheus remote write client doesn't support non 204...
 		// w.WriteHeader(http.StatusAccepted)
-		sc.Reporter.OnMetricsProcessed(ctx2, 0, nil)
-		w.WriteHeader(http.StatusNoContent)
+		sc.Reporter.OnMetricsProcessed(ctx2, results.MetricCount(), nil)
 	}
 }

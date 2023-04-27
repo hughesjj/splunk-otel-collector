@@ -73,6 +73,7 @@ func TestEmptySend(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, client)
 	mockreporter.AddExpectedStart(1)
+	mockreporter.AddExpectedSuccess(1)
 	require.NoError(t, client.SendWriteRequest(&prompb.WriteRequest{
 		Timeseries: []prompb.TimeSeries{},
 		Metadata:   []prompb.MetricMetadata{},
@@ -137,6 +138,7 @@ func TestActualSend(t *testing.T) {
 	// first try processing them without heuristics, then send them again with metadata.  check later to see if heuristics worked
 	for index, wq := range sampleNoMdMetrics {
 		mockreporter.AddExpectedStart(1)
+		mockreporter.AddExpectedSuccess(1)
 		err = client.SendWriteRequest(wq)
 		assert.Nil(t, err, "failed to write %d", index)
 		if nil != err {
@@ -146,6 +148,7 @@ func TestActualSend(t *testing.T) {
 
 	for index, wq := range sampleMdMetrics {
 		mockreporter.AddExpectedStart(1)
+		mockreporter.AddExpectedSuccess(1)
 		err = client.SendWriteRequest(wq)
 		assert.Nil(t, err, "failed to write %d reason %s", index, err)
 

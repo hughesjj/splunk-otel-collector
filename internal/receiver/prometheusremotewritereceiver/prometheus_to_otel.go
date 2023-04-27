@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/multierr"
 
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/prometheusremotewritereceiver/internal"
 )
@@ -33,15 +34,7 @@ func (prwParser *PrometheusRemoteOtelParser) FromPrometheusWriteRequestMetrics(c
 	var otelMetrics pmetric.Metrics
 	metricFamiliesAndData, err := prwParser.partitionWriteRequest(ctx, request)
 	if nil == err {
-		otelMetrics, err = prwParser.TransformPrwToOtel(ctx, metricFamiliesAndData)
-		if nil == err {
-			// TODO question is... is Reporter nil or is -- oh no it's context definitely context
-			prwParser.Reporter.OnMetricsProcessed(ctx, otelMetrics.DataPointCount(), err)
-		} else {
-			prwParser.Reporter.OnError(ctx, "prometheus_translation", err)
-		}
-	} else {
-		prwParser.Reporter.OnError(ctx, "prometheus_translation", err)
+		otelMetrics, err = prwParser.TransformPrwToOtel(metricFamiliesAndData)
 	}
 	return otelMetrics, err
 }
@@ -57,14 +50,12 @@ type MetricData struct {
 
 type PrometheusRemoteOtelParser struct {
 	metricTypesCache *internal.PrometheusMetricTypeCache
-	Reporter         reporter
 	context.Context
 }
 
-func NewPrwOtelParser(ctx context.Context, reporter reporter, capacity int) (*PrometheusRemoteOtelParser, error) {
+func NewPrwOtelParser(ctx context.Context, capacity int) (*PrometheusRemoteOtelParser, error) {
 	return &PrometheusRemoteOtelParser{
 		metricTypesCache: internal.NewPrometheusMetricTypeCache(ctx, capacity),
-		Reporter:         reporter,
 		Context:          ctx,
 	}, nil
 }
@@ -118,15 +109,14 @@ func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(_ context.Con
 	return partitions, nil
 }
 
-func (prwParser *PrometheusRemoteOtelParser) TransformPrwToOtel(context context.Context, parsedPrwMetrics map[string][]MetricData) (pmetric.Metrics, error) {
+func (prwParser *PrometheusRemoteOtelParser) TransformPrwToOtel(parsedPrwMetrics map[string][]MetricData) (pmetric.Metrics, error) {
 	metric := pmetric.NewMetrics()
 	var translationErrors []error
 	for metricFamily, metrics := range parsedPrwMetrics {
 		rm := metric.ResourceMetrics().AppendEmpty()
-		err := prwParser.addMetrics(context, rm, metricFamily, metrics)
+		err := prwParser.addMetrics(rm, metricFamily, metrics)
 		if err != nil {
 			translationErrors = append(translationErrors, err)
-			prwParser.Reporter.OnError(context, "prometheus_translation", err)
 		}
 	}
 	if translationErrors != nil {
@@ -137,7 +127,7 @@ func (prwParser *PrometheusRemoteOtelParser) TransformPrwToOtel(context context.
 
 // This actually converts from a prometheus prompdb.MetaDataType to the closest equivalent otel type
 // See https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/13bcae344506fe2169b59d213361d04094c651f6/receiver/prometheusreceiver/internal/util.go#L106
-func (prwParser *PrometheusRemoteOtelParser) addMetrics(prwContext context.Context, rm pmetric.ResourceMetrics, family string, metrics []MetricData) error {
+func (prwParser *PrometheusRemoteOtelParser) addMetrics(rm pmetric.ResourceMetrics, family string, metrics []MetricData) error {
 	// TODO hughesjj cast to int if essentially int... maybe?  idk they do it in sfx.gateway
 	ilm := rm.ScopeMetrics().AppendEmpty()
 	ilm.Scope().SetName(internal.TypeStr)
@@ -149,21 +139,23 @@ func (prwParser *PrometheusRemoteOtelParser) addMetrics(prwContext context.Conte
 	}
 
 	var translationErrors []error
+	var err error
 	switch metricsMetadata.Type {
 	case prompb.MetricMetadata_GAUGE, prompb.MetricMetadata_UNKNOWN:
-		prwParser.addGaugeMetrics(ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addGaugeMetrics(ilm, family, &metrics, metricsMetadata)
 	case prompb.MetricMetadata_COUNTER:
-		prwParser.addCounterMetrics(ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addCounterMetrics(ilm, family, &metrics, metricsMetadata)
 	case prompb.MetricMetadata_HISTOGRAM:
-		prwParser.addHistogramMetrics(prwParser, ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addHistogramMetrics(ilm, family, &metrics, metricsMetadata)
 	case prompb.MetricMetadata_SUMMARY:
-		prwParser.addSummaryMetrics(ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addSummaryMetrics(ilm, family, &metrics, metricsMetadata)
 	case prompb.MetricMetadata_INFO, prompb.MetricMetadata_STATESET:
-		prwParser.addInfoStateset(ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addInfoStateset(ilm, family, &metrics, metricsMetadata)
 	default:
-		err := fmt.Errorf("unsupported type %s for metric family %s", metricsMetadata.Type, family)
+		err = fmt.Errorf("unsupported type %s for metric family %s", metricsMetadata.Type, family)
+	}
+	if err != nil {
 		translationErrors = append(translationErrors, err)
-		prwParser.Reporter.OnError(prwContext, "prometheus_translation", err)
 	}
 	if translationErrors != nil {
 		return multierror.Wrap(translationErrors)
@@ -179,7 +171,8 @@ func (prwParser *PrometheusRemoteOtelParser) scaffoldNewMetric(ilm pmetric.Scope
 	return nm
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(prwContext context.Context, ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
+func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+	var translationErrors []error
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
 
 	for _, metricsData := range *metrics {
@@ -199,7 +192,7 @@ func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(prwContext cont
 				if attr.Name == "le" {
 					val, err := strconv.Atoi(attr.Value)
 					if err != nil {
-						prwParser.Reporter.OnError(prwContext, "prometheus_translation_histogram", err)
+						translationErrors = append(translationErrors, err)
 					} else {
 						// Okay is this actual observed max or simply upperbound?
 						dp.SetMax(float64(val))
@@ -216,7 +209,7 @@ func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(prwContext cont
 					if attr.Name == "le" {
 						val, err := strconv.Atoi(attr.Value)
 						if err != nil {
-							prwParser.Reporter.OnError(prwContext, "prometheus_translation_histogram", err)
+							translationErrors = append(translationErrors, err)
 						} else {
 							// Okay is this actual observed max or simply upperbound?
 							dp.SetMax(float64(val))
@@ -228,10 +221,20 @@ func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(prwContext cont
 			}
 		}
 	}
+	if translationErrors != nil {
+		return multierr.Combine(translationErrors...)
+	}
+	return nil
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addSummaryMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
-	// TODO hughesjj better way to access
+func (prwParser *PrometheusRemoteOtelParser) addSummaryMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+	var translationErrors []error
+	if nil == metrics {
+		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
+	}
+	if translationErrors != nil {
+		return multierr.Combine(translationErrors...)
+	}
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
 	for _, metricsData := range *metrics {
 		if metricsData.MetricName != "" {
@@ -251,10 +254,17 @@ func (prwParser *PrometheusRemoteOtelParser) addSummaryMetrics(ilm pmetric.Scope
 			}
 		}
 	}
+	return nil
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addGaugeMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
-	// TODO hughesjj better way to access
+func (prwParser *PrometheusRemoteOtelParser) addGaugeMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+	var translationErrors []error
+	if nil == metrics {
+		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
+	}
+	if translationErrors != nil {
+		return multierr.Combine(translationErrors...)
+	}
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
 	for _, metricsData := range *metrics {
 		if metricsData.MetricName != "" {
@@ -270,10 +280,17 @@ func (prwParser *PrometheusRemoteOtelParser) addGaugeMetrics(ilm pmetric.ScopeMe
 			}
 		}
 	}
+	return nil
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
-	// TODO hughesjj better way to access
+func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+	var translationErrors []error
+	if nil == metrics {
+		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
+	}
+	if translationErrors != nil {
+		return multierr.Combine(translationErrors...)
+	}
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
 	for _, metricsData := range *metrics {
 		// TODO yeah no
@@ -295,9 +312,17 @@ func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.Scope
 			// Fairly certain counter is byref here
 		}
 	}
+	return nil
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
+func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+	var translationErrors []error
+	if nil == metrics {
+		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
+	}
+	if translationErrors != nil {
+		return multierr.Combine(translationErrors...)
+	}
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
 	for _, metricsData := range *metrics {
 		// TODO better way to do this
@@ -305,7 +330,7 @@ func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMe
 			nm.SetName(metricsData.MetricName)
 		}
 
-		// set as SUM but not monotonic
+		// set as SUM but non-monotonic
 		sumMetric := nm.SetEmptySum()
 		sumMetric.SetIsMonotonic(false)
 		sumMetric.SetAggregationTemporality(pmetric.AggregationTemporalityUnspecified)
@@ -319,10 +344,9 @@ func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMe
 			}
 		}
 	}
+	return nil
 }
 
-// TODO  hughesjj okay here let's factor out the above cases into different type translations
-// We've already partitioned on family name at this point so should be more but not totally easy to do this
 // TODO for future could
 // 1. set up a different receiver just for metadata and offer a config option to hit that up & export to such from self?
 // 2. allow providing config.go option or even file in config.go to "seed" metadata and the likes
@@ -330,3 +354,8 @@ func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMe
 // TODO hughesjj okay so next steps
 // Alright probably should either do tests, add the cache for buckets and/or quantiles, or just converge your histogram impl
 // probably best to make tests more stable and port over the other older ones first before going at it
+// which means first order of business is finding out the failures for mock issues given changes to reporting
+// counts currently are
+// promtootel: 7, 1 processed 6 errors
+// receiver: 1 start 1 error 1 processed 1 debug
+// server: 1 start 1 error 1 processed 1 debug

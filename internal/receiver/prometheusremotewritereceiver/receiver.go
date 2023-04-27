@@ -63,7 +63,7 @@ func New(
 // Start starts an HTTP server that can process Prometheus Remote Write Requests
 func (receiver *prometheusRemoteWriteReceiver) Start(ctx context.Context, host component.Host) error {
 	metricsChannel := make(chan pmetric.Metrics, receiver.config.BufferSize)
-	parser, err := NewPrwOtelParser(ctx, receiver.reporter, receiver.config.CacheCapacity)
+	parser, err := NewPrwOtelParser(ctx, receiver.config.CacheCapacity)
 	if err != nil {
 		return err
 	}
