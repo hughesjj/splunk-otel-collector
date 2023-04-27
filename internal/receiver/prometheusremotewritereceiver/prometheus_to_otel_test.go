@@ -168,16 +168,19 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 }
 
 func TestFromWriteRequest(t *testing.T) {
-	expectedCalls := 1
+	expectedCalls := 100
 	reporter := newMockReporter(expectedCalls)
 	require.NotNil(t, reporter)
 	parser, err := NewPrwOtelParser(context.Background(), reporter, 100)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())
+	// TODO maybe add a recover on this
+	reporter.AddExpectedSuccess(100)
 	metrics, err := parser.FromPrometheusWriteRequestMetrics(context.Background(), sampleWriteRequests)
 	require.Nil(t, err)
 	require.NotNil(t, metrics)
 	assert.NotNil(t, metrics.ResourceMetrics())
 	assert.Greater(t, metrics.DataPointCount(), 0)
+	recover()
 }

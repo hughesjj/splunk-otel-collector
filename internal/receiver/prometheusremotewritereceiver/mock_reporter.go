@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -26,57 +25,56 @@ import (
 // mockReporter provides a reporter that provides some useful functionalities for
 // tests (e.g.: wait for certain number of messages).
 type mockReporter struct {
-	Errors            []error
-	wgMetricsStarted  sync.WaitGroup
-	wgMetricsError    sync.WaitGroup
-	wgMetricsSuccess  sync.WaitGroup
-	TotalCalls        uint32
-	MessagesProcessed uint32
+	TotalCalls         *int32
+	OpsSuccess         *int32
+	OpsStarted         *int32
+	OpsFailed          *int32
+	OpsSuccessComplete *int32
+	OpsStartedComplete *int32
+	OpsFailedComplete  *int32
+	Errors             []error
 }
 
 var _ reporter = (*mockReporter)(nil)
 
 func (m *mockReporter) AddExpectedError(newCalls int) int {
-	m.wgMetricsError.Add(newCalls)
-	atomic.AddUint32(&m.MessagesProcessed, uint32(newCalls))
-	atomic.AddUint32(&m.TotalCalls, uint32(newCalls))
-	return int(m.TotalCalls)
+	atomic.AddInt32(m.OpsFailed, int32(newCalls))
+	atomic.AddInt32(m.TotalCalls, int32(newCalls))
+	return int(atomic.LoadInt32(m.TotalCalls))
 }
 
 func (m *mockReporter) AddExpectedSuccess(newCalls int) int {
-	m.wgMetricsSuccess.Add(newCalls)
-	atomic.AddUint32(&m.MessagesProcessed, uint32(newCalls))
-	atomic.AddUint32(&m.TotalCalls, uint32(newCalls))
-	return int(m.TotalCalls)
+	atomic.AddInt32(m.OpsSuccess, int32(newCalls))
+	atomic.AddInt32(m.TotalCalls, int32(newCalls))
+	return int(atomic.LoadInt32(m.TotalCalls))
 }
 
 func (m *mockReporter) AddExpectedStart(newCalls int) int {
-	m.wgMetricsStarted.Add(newCalls)
-	atomic.AddUint32(&m.MessagesProcessed, uint32(newCalls))
-	atomic.AddUint32(&m.TotalCalls, uint32(newCalls))
-	return int(m.TotalCalls)
+	atomic.AddInt32(m.OpsStarted, int32(newCalls))
+	atomic.AddInt32(m.TotalCalls, int32(newCalls))
+	return int(atomic.LoadInt32(m.TotalCalls))
 }
 
 // newMockReporter returns a new instance of a mockReporter.
-func newMockReporter(expectedOnMetricsProcessedCalls int) *mockReporter {
+func newMockReporter(expectedOpStartedCalls int) *mockReporter {
 	m := mockReporter{}
-	m.wgMetricsStarted.Add(expectedOnMetricsProcessedCalls)
+	atomic.AddInt32(m.OpsStarted, int32(expectedOpStartedCalls))
+	atomic.AddInt32(m.TotalCalls, int32(expectedOpStartedCalls))
 	return &m
 }
 
 func (m *mockReporter) StartMetricsOp(ctx context.Context) context.Context {
-	m.wgMetricsStarted.Done()
+	atomic.AddInt32(m.OpsStartedComplete, 1)
 	return ctx
 }
 
 func (m *mockReporter) OnError(_ context.Context, _ string, err error) {
 	m.Errors = append(m.Errors, err)
-	m.wgMetricsError.Done()
+	atomic.AddInt32(m.OpsFailedComplete, 1)
 }
 
 func (m *mockReporter) OnMetricsProcessed(_ context.Context, numReceivedMessages int, _ error) {
-	atomic.AddUint32(&m.MessagesProcessed, uint32(numReceivedMessages))
-	m.wgMetricsSuccess.Done()
+	atomic.AddInt32(m.OpsSuccessComplete, int32(numReceivedMessages))
 }
 
 func (m *mockReporter) OnDebugf(template string, args ...interface{}) {
@@ -88,30 +86,19 @@ func (m *mockReporter) OnDebugf(template string, args ...interface{}) {
 func (m *mockReporter) WaitAllOnMetricsProcessedCalls(timeout time.Duration) error {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
 	defer cancel()
-	completed := make(chan string)
 
 	go func() {
-		m.wgMetricsStarted.Wait()
-		completed <- "started metrics"
-		cancel()
-	}()
-
-	go func() {
-		m.wgMetricsError.Wait()
-		completed <- "error metrics"
-		cancel()
-	}()
-
-	go func() {
-		m.wgMetricsSuccess.Wait()
-		completed <- "success metrics"
-		cancel()
+		totalExpected := atomic.LoadInt32(m.OpsSuccess) + atomic.LoadInt32(m.OpsFailed) + atomic.LoadInt32(m.OpsStarted)
+		total := atomic.LoadInt32(m.OpsSuccessComplete) + atomic.LoadInt32(m.OpsFailedComplete) + atomic.LoadInt32(m.OpsStartedComplete)
+		if total == totalExpected {
+			cancel()
+		} else {
+			time.Sleep(time.Second)
+		}
 	}()
 
 	for {
 		select {
-		case callCollection := <-completed:
-			fmt.Printf("done with class of reporter calls: %s\n", callCollection)
 		case <-time.After(timeout):
 			return errors.New("took too long to return")
 		case <-ctx.Done():

@@ -179,7 +179,6 @@ func (prwParser *PrometheusRemoteOtelParser) scaffoldNewMetric(ilm pmetric.Scope
 }
 
 func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(prwContext context.Context, ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
-	// TODO hughesjj better way to access
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
 
 	for _, metricsData := range *metrics {
@@ -326,3 +325,7 @@ func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMe
 // TODO for future could
 // 1. set up a different receiver just for metadata and offer a config option to hit that up & export to such from self?
 // 2. allow providing config.go option or even file in config.go to "seed" metadata and the likes
+
+// TODO hughesjj okay so next steps
+// Alright probably should either do tests, add the cache for buckets and/or quantiles, or just converge your histogram impl
+// probably best to make tests more stable and port over the other older ones first before going at it
