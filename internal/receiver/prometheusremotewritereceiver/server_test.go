@@ -32,7 +32,7 @@ import (
 
 func TestWriteEmpty(t *testing.T) {
 	mc := make(chan<- pmetric.Metrics)
-	mockReporter := newMockReporter(1)
+	mockReporter := newMockReporter()
 	freePort, err := GetFreePort()
 	require.NoError(t, err)
 	expectedEndpoint := fmt.Sprintf("localhost:%d", freePort)
@@ -84,8 +84,8 @@ func TestWriteEmpty(t *testing.T) {
 }
 
 func TestWriteMany(t *testing.T) {
-	mc := make(chan<- pmetric.Metrics)
-	mockReporter := newMockReporter(0)
+	mc := make(chan<- pmetric.Metrics, 1000)
+	mockReporter := newMockReporter()
 	freePort, err := GetFreePort()
 	require.NoError(t, err)
 	expectedEndpoint := fmt.Sprintf("localhost:%d", freePort)

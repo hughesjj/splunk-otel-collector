@@ -53,7 +53,7 @@ func (m *mockReporter) AddExpectedStart(newCalls int) int {
 }
 
 // newMockReporter returns a new instance of a mockReporter.
-func newMockReporter(_ int) *mockReporter {
+func newMockReporter() *mockReporter {
 	successCalls := new(int32)
 	m := mockReporter{
 		OpsSuccess:          &sync.WaitGroup{},

@@ -28,8 +28,7 @@ import (
 
 func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 	ctx := context.Background()
-	expectedCalls := 1
-	reporter := newMockReporter(expectedCalls)
+	reporter := newMockReporter()
 	require.NotNil(t, reporter)
 	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)
@@ -60,8 +59,7 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 	// Test is failing as can-be expected due to changes to logging in obsreporter calls
 	ctx := context.Background()
-	expectedCalls := 1
-	reporter := newMockReporter(expectedCalls)
+	reporter := newMockReporter()
 	require.NotNil(t, reporter)
 	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)
@@ -94,8 +92,7 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 
 func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	ctx := context.Background()
-	expectedCalls := 1
-	reporter := newMockReporter(expectedCalls)
+	reporter := newMockReporter()
 	require.NotNil(t, reporter)
 	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)
@@ -168,7 +165,7 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 }
 
 func TestFromWriteRequest(t *testing.T) {
-	reporter := newMockReporter(0)
+	reporter := newMockReporter()
 	require.NotNil(t, reporter)
 	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)

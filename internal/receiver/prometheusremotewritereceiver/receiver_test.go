@@ -47,7 +47,7 @@ func TestEmptySend(t *testing.T) {
 	nopHost := componenttest.NewNopHost()
 	mockSettings := receivertest.NewNopCreateSettings()
 	mockConsumer := consumertest.NewNop()
-	mockreporter := newMockReporter(0)
+	mockreporter := newMockReporter()
 	receiver, err := New(mockSettings, cfg, mockConsumer)
 	remoteWriteReceiver := receiver.(*prometheusRemoteWriteReceiver)
 	remoteWriteReceiver.reporter = mockreporter
@@ -104,7 +104,7 @@ func TestActualSend(t *testing.T) {
 
 	sampleNoMdMetrics := testdata.GetWriteRequests()
 	sampleMdMetrics := testdata.GetWriteRequestsWithMetadata()
-	mockreporter := newMockReporter(len(sampleMdMetrics) + len(sampleMdMetrics))
+	mockreporter := newMockReporter()
 
 	receiver, err := New(mockSettings, cfg, mockConsumer)
 	remoteWriteReceiver := receiver.(*prometheusRemoteWriteReceiver)

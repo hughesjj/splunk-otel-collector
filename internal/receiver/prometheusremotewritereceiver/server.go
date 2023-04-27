@@ -98,11 +98,11 @@ func newHandler(ctx context.Context, parser *PrometheusRemoteOtelParser, sc *Ser
 			sc.Reporter.OnError(ctx2, "prometheus_translation", err)
 			return
 		}
-		//mc <- results                       // TODO hughesjj well, I think it might break here for some reason?
+		// TODO hughesjj dude you suck at channels
+		mc <- results // TODO hughesjj well, I think it might break here for some reason?
 		// In anticipation of eventually better supporting backpressure, return 202 instead of 204
 		// eh actually the prometheus remote write client doesn't support non 204...
 		w.WriteHeader(http.StatusAccepted)
 		sc.Reporter.OnMetricsProcessed(ctx2, results.MetricCount(), nil)
-		return
 	}
 }
