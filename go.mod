@@ -126,6 +126,7 @@ require (
 	github.com/bits-and-blooms/bitset v1.4.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.6.0 // indirect
 	github.com/cpuguy83/dockercfg v0.3.1 // indirect
+	github.com/deckarep/golang-set/v2 v2.3.0 // indirect
 	github.com/go-redis/redis/v7 v7.4.1 // indirect
 	github.com/goccy/go-json v0.9.11 // indirect
 	github.com/hashicorp/go-kms-wrapping/v2 v2.0.8 // indirect

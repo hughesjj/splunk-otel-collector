@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jaegertracing/jaeger/pkg/multierror"
@@ -135,7 +136,7 @@ func (prwParser *PrometheusRemoteOtelParser) TransformPrwToOtel(context context.
 
 // This actually converts from a prometheus prompdb.MetaDataType to the closest equivalent otel type
 // See https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/13bcae344506fe2169b59d213361d04094c651f6/receiver/prometheusreceiver/internal/util.go#L106
-func (prwParser *PrometheusRemoteOtelParser) addMetrics(context context.Context, rm pmetric.ResourceMetrics, family string, metrics []MetricData) error {
+func (prwParser *PrometheusRemoteOtelParser) addMetrics(prwContext context.Context, rm pmetric.ResourceMetrics, family string, metrics []MetricData) error {
 	// TODO hughesjj cast to int if essentially int... maybe?  idk they do it in sfx.gateway
 	ilm := rm.ScopeMetrics().AppendEmpty()
 	ilm.Scope().SetName(internal.TypeStr)
@@ -147,108 +148,181 @@ func (prwParser *PrometheusRemoteOtelParser) addMetrics(context context.Context,
 	}
 
 	var translationErrors []error
-	for _, metricsData := range metrics {
-		nm := ilm.Metrics().AppendEmpty()
-		nm.SetUnit(metricsData.MetricMetadata.Unit)
-		nm.SetDescription(metricsData.MetricMetadata.GetHelp())
-		if metricsData.MetricName != "" {
-			nm.SetName(metricsData.MetricName)
-		} else {
-			// TODO hughesjj should prolly warn on this
-			nm.SetName(family)
-		}
-		switch metricsMetadata.Type {
-		case prompb.MetricMetadata_GAUGE, prompb.MetricMetadata_UNKNOWN:
-			gauge := nm.SetEmptyGauge()
-			for _, sample := range *metricsData.Samples {
-				dp := gauge.DataPoints().AppendEmpty()
-				dp.SetDoubleValue(sample.Value)
-				dp.SetTimestamp(pcommon.Timestamp(sample.Timestamp * int64(time.Millisecond)))
-				for _, attr := range *metricsData.Labels {
-					dp.Attributes().PutStr(attr.Name, attr.Value)
-				}
-			}
-		case prompb.MetricMetadata_COUNTER:
-			sumMetric := nm.SetEmptySum()
-			// TODO hughesjj No idea how correct this is, but scraper always sets this way.  could totally see PRW being different
-			sumMetric.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-			// TODO hughesjj No idea how correct this is, but scraper always sets this way.  could totally see PRW being different
-			sumMetric.SetIsMonotonic(true)
-			for _, sample := range *metricsData.Samples {
-				counter := nm.Sum().DataPoints().AppendEmpty()
-				counter.SetDoubleValue(sample.Value)
-				counter.SetTimestamp(pcommon.Timestamp(sample.Timestamp * int64(time.Millisecond)))
-				for _, attr := range *metricsData.Labels {
-					counter.Attributes().PutStr(attr.Name, attr.Value)
-				}
-				// Fairly certain counter is byref here
-			}
-		case prompb.MetricMetadata_HISTOGRAM:
-			histogramDps := nm.SetEmptyHistogram()
-			for _, sample := range *metricsData.Histograms {
-				dp := histogramDps.DataPoints().AppendEmpty()
-				dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
-				dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
-				dp.SetSum(sample.GetSum())
-				dp.SetCount(sample.GetCountInt())
-				for _, attr := range *metricsData.Labels {
-					if attr.Name == "le" {
-						// attr.Value might have the quantile
-					} else {
-						dp.Attributes().PutStr(attr.Name, attr.Value)
-					}
-				}
-			}
-			for _, sample := range *metricsData.Samples {
-				dp := histogramDps.DataPoints().AppendEmpty()
-				dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
-				dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
-				for _, attr := range *metricsData.Labels {
-					if attr.Name == "le" {
-						// attr.Value might have the quantile
-					} else {
-						dp.Attributes().PutStr(attr.Name, attr.Value)
-					}
-				}
-			}
-		case prompb.MetricMetadata_SUMMARY:
-			summaryDps := nm.SetEmptySummary()
-
-			for _, sample := range *metricsData.Samples {
-				dp := summaryDps.DataPoints().AppendEmpty()
-				sample.Descriptor()
-				dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
-				dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
-				dp.SetSum(sample.GetValue())
-				dp.SetCount(uint64(sample.Size()))
-				for _, attr := range *metricsData.Labels {
-					dp.Attributes().PutStr(attr.Name, attr.Value)
-				}
-			}
-
-		case prompb.MetricMetadata_INFO, prompb.MetricMetadata_STATESET:
-			// set as SUM but not monotonic
-			sumMetric := nm.SetEmptySum()
-			sumMetric.SetIsMonotonic(false)
-			sumMetric.SetAggregationTemporality(pmetric.AggregationTemporalityUnspecified)
-
-			for _, sample := range *metricsData.Samples {
-				dp := sumMetric.DataPoints().AppendEmpty()
-				dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
-				dp.SetDoubleValue(sample.GetValue()) // TODO hughesjj maybe see if can be intvalue
-				for _, attr := range *metricsData.Labels {
-					dp.Attributes().PutStr(attr.Name, attr.Value)
-				}
-			}
-
-		default:
-			err := fmt.Errorf("unsupported type %s for metric %s", metricsMetadata.Type, metricsData.MetricName)
-			translationErrors = append(translationErrors, err)
-			prwParser.Reporter.OnError(context, "prometheus_translation", err)
-		}
+	switch metricsMetadata.Type {
+	case prompb.MetricMetadata_GAUGE, prompb.MetricMetadata_UNKNOWN:
+		prwParser.addGaugeMetrics(ilm, family, &metrics, metricsMetadata)
+	case prompb.MetricMetadata_COUNTER:
+		prwParser.addCounterMetrics(ilm, family, &metrics, metricsMetadata)
+	case prompb.MetricMetadata_HISTOGRAM:
+		prwParser.addHistogramMetrics(prwParser, ilm, family, &metrics, metricsMetadata)
+	case prompb.MetricMetadata_SUMMARY:
+		prwParser.addSummaryMetrics(ilm, family, &metrics, metricsMetadata)
+	case prompb.MetricMetadata_INFO, prompb.MetricMetadata_STATESET:
+		prwParser.addInfoStateset(ilm, family, &metrics, metricsMetadata)
+	default:
+		err := fmt.Errorf("unsupported type %s for metric family %s", metricsMetadata.Type, family)
+		translationErrors = append(translationErrors, err)
+		prwParser.Reporter.OnError(prwContext, "prometheus_translation", err)
 	}
 	if translationErrors != nil {
 		return multierror.Wrap(translationErrors)
 	}
 	return nil
 }
+
+func (prwParser *PrometheusRemoteOtelParser) scaffoldNewMetric(ilm pmetric.ScopeMetrics, family string, metricsMetadata prompb.MetricMetadata) pmetric.Metric {
+	nm := ilm.Metrics().AppendEmpty()
+	nm.SetUnit(metricsMetadata.Unit)
+	nm.SetDescription(metricsMetadata.GetHelp())
+	nm.SetName(family)
+	return nm
+}
+
+func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(prwContext context.Context, ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
+	// TODO hughesjj better way to access
+	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
+
+	for _, metricsData := range *metrics {
+		if metricsData.MetricName != "" {
+			nm.SetName(metricsData.MetricName)
+		}
+		histogramDps := nm.SetEmptyHistogram()
+		for _, sample := range *metricsData.Histograms {
+			dp := histogramDps.DataPoints().AppendEmpty()
+			// TODO get max (likely)
+			dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+			// TODO get min
+			dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+			dp.SetSum(sample.GetSum())
+			dp.SetCount(sample.GetCountInt())
+			for _, attr := range *metricsData.Labels {
+				if attr.Name == "le" {
+					val, err := strconv.Atoi(attr.Value)
+					if err != nil {
+						prwParser.Reporter.OnError(prwContext, "prometheus_translation_histogram", err)
+					} else {
+						// Okay is this actual observed max or simply upperbound?
+						dp.SetMax(float64(val))
+					}
+				} else {
+					dp.Attributes().PutStr(attr.Name, attr.Value)
+				}
+			}
+			for _, sample := range *metricsData.Samples {
+				dp := histogramDps.DataPoints().AppendEmpty()
+				dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+				dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+				for _, attr := range *metricsData.Labels {
+					if attr.Name == "le" {
+						val, err := strconv.Atoi(attr.Value)
+						if err != nil {
+							prwParser.Reporter.OnError(prwContext, "prometheus_translation_histogram", err)
+						} else {
+							// Okay is this actual observed max or simply upperbound?
+							dp.SetMax(float64(val))
+						}
+					} else {
+						dp.Attributes().PutStr(attr.Name, attr.Value)
+					}
+				}
+			}
+		}
+	}
+}
+
+func (prwParser *PrometheusRemoteOtelParser) addSummaryMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
+	// TODO hughesjj better way to access
+	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
+	for _, metricsData := range *metrics {
+		if metricsData.MetricName != "" {
+			nm.SetName(metricsData.MetricName)
+		}
+		summaryDps := nm.SetEmptySummary()
+
+		for _, sample := range *metricsData.Samples {
+			dp := summaryDps.DataPoints().AppendEmpty()
+			sample.Descriptor()
+			dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+			dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+			dp.SetSum(sample.GetValue())
+			dp.SetCount(uint64(sample.Size()))
+			for _, attr := range *metricsData.Labels {
+				dp.Attributes().PutStr(attr.Name, attr.Value)
+			}
+		}
+	}
+}
+
+func (prwParser *PrometheusRemoteOtelParser) addGaugeMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
+	// TODO hughesjj better way to access
+	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
+	for _, metricsData := range *metrics {
+		if metricsData.MetricName != "" {
+			nm.SetName(metricsData.MetricName)
+		}
+		gauge := nm.SetEmptyGauge()
+		for _, sample := range *metricsData.Samples {
+			dp := gauge.DataPoints().AppendEmpty()
+			dp.SetDoubleValue(sample.Value)
+			dp.SetTimestamp(pcommon.Timestamp(sample.Timestamp * int64(time.Millisecond)))
+			for _, attr := range *metricsData.Labels {
+				dp.Attributes().PutStr(attr.Name, attr.Value)
+			}
+		}
+	}
+}
+
+func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
+	// TODO hughesjj better way to access
+	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
+	for _, metricsData := range *metrics {
+		// TODO yeah no
+		if metricsData.MetricName != "" {
+			nm.SetName(metricsData.MetricName)
+		}
+		sumMetric := nm.SetEmptySum()
+		// TODO hughesjj No idea how correct this is, but scraper always sets this way.  could totally see PRW being different
+		sumMetric.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+		// TODO hughesjj No idea how correct this is, but scraper always sets this way.  could totally see PRW being different
+		sumMetric.SetIsMonotonic(true)
+		for _, sample := range *metricsData.Samples {
+			counter := nm.Sum().DataPoints().AppendEmpty()
+			counter.SetDoubleValue(sample.Value)
+			counter.SetTimestamp(pcommon.Timestamp(sample.Timestamp * int64(time.Millisecond)))
+			for _, attr := range *metricsData.Labels {
+				counter.Attributes().PutStr(attr.Name, attr.Value)
+			}
+			// Fairly certain counter is byref here
+		}
+	}
+}
+
+func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) {
+	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
+	for _, metricsData := range *metrics {
+		// TODO better way to do this
+		if metricsData.MetricName != "" {
+			nm.SetName(metricsData.MetricName)
+		}
+
+		// set as SUM but not monotonic
+		sumMetric := nm.SetEmptySum()
+		sumMetric.SetIsMonotonic(false)
+		sumMetric.SetAggregationTemporality(pmetric.AggregationTemporalityUnspecified)
+
+		for _, sample := range *metricsData.Samples {
+			dp := sumMetric.DataPoints().AppendEmpty()
+			dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
+			dp.SetDoubleValue(sample.GetValue()) // TODO hughesjj maybe see if can be intvalue
+			for _, attr := range *metricsData.Labels {
+				dp.Attributes().PutStr(attr.Name, attr.Value)
+			}
+		}
+	}
+}
+
+// TODO  hughesjj okay here let's factor out the above cases into different type translations
+// We've already partitioned on family name at this point so should be more but not totally easy to do this
+// TODO for future could
+// 1. set up a different receiver just for metadata and offer a config option to hit that up & export to such from self?
+// 2. allow providing config.go option or even file in config.go to "seed" metadata and the likes

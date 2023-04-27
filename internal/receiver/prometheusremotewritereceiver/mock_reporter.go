@@ -26,16 +26,32 @@ import (
 // mockReporter provides a reporter that provides some useful functionalities for
 // tests (e.g.: wait for certain number of messages).
 type mockReporter struct {
-	Errors             []error
-	wgMetricsProcessed sync.WaitGroup
-	TotalCalls         uint32
-	MessagesProcessed  uint32
+	Errors            []error
+	wgMetricsStarted  sync.WaitGroup
+	wgMetricsError    sync.WaitGroup
+	wgMetricsSuccess  sync.WaitGroup
+	TotalCalls        uint32
+	MessagesProcessed uint32
 }
 
 var _ reporter = (*mockReporter)(nil)
 
-func (m *mockReporter) AddExpected(newCalls int) int {
-	m.wgMetricsProcessed.Add(newCalls)
+func (m *mockReporter) AddExpectedError(newCalls int) int {
+	m.wgMetricsError.Add(newCalls)
+	atomic.AddUint32(&m.MessagesProcessed, uint32(newCalls))
+	atomic.AddUint32(&m.TotalCalls, uint32(newCalls))
+	return int(m.TotalCalls)
+}
+
+func (m *mockReporter) AddExpectedSuccess(newCalls int) int {
+	m.wgMetricsSuccess.Add(newCalls)
+	atomic.AddUint32(&m.MessagesProcessed, uint32(newCalls))
+	atomic.AddUint32(&m.TotalCalls, uint32(newCalls))
+	return int(m.TotalCalls)
+}
+
+func (m *mockReporter) AddExpectedStart(newCalls int) int {
+	m.wgMetricsStarted.Add(newCalls)
 	atomic.AddUint32(&m.MessagesProcessed, uint32(newCalls))
 	atomic.AddUint32(&m.TotalCalls, uint32(newCalls))
 	return int(m.TotalCalls)
@@ -44,21 +60,23 @@ func (m *mockReporter) AddExpected(newCalls int) int {
 // newMockReporter returns a new instance of a mockReporter.
 func newMockReporter(expectedOnMetricsProcessedCalls int) *mockReporter {
 	m := mockReporter{}
-	m.wgMetricsProcessed.Add(expectedOnMetricsProcessedCalls)
+	m.wgMetricsStarted.Add(expectedOnMetricsProcessedCalls)
 	return &m
 }
 
 func (m *mockReporter) StartMetricsOp(ctx context.Context) context.Context {
+	m.wgMetricsStarted.Done()
 	return ctx
 }
 
 func (m *mockReporter) OnError(_ context.Context, _ string, err error) {
 	m.Errors = append(m.Errors, err)
+	m.wgMetricsError.Done()
 }
 
 func (m *mockReporter) OnMetricsProcessed(_ context.Context, numReceivedMessages int, _ error) {
 	atomic.AddUint32(&m.MessagesProcessed, uint32(numReceivedMessages))
-	m.wgMetricsProcessed.Done()
+	m.wgMetricsSuccess.Done()
 }
 
 func (m *mockReporter) OnDebugf(template string, args ...interface{}) {
@@ -70,16 +88,34 @@ func (m *mockReporter) OnDebugf(template string, args ...interface{}) {
 func (m *mockReporter) WaitAllOnMetricsProcessedCalls(timeout time.Duration) error {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
 	defer cancel()
+	completed := make(chan string)
 
 	go func() {
-		m.wgMetricsProcessed.Wait()
+		m.wgMetricsStarted.Wait()
+		completed <- "started metrics"
 		cancel()
 	}()
 
-	select {
-	case <-time.After(timeout):
-		return errors.New("took too long to return")
-	case <-ctx.Done():
-		return nil
+	go func() {
+		m.wgMetricsError.Wait()
+		completed <- "error metrics"
+		cancel()
+	}()
+
+	go func() {
+		m.wgMetricsSuccess.Wait()
+		completed <- "success metrics"
+		cancel()
+	}()
+
+	for {
+		select {
+		case callCollection := <-completed:
+			fmt.Printf("done with class of reporter calls: %s\n", callCollection)
+		case <-time.After(timeout):
+			return errors.New("took too long to return")
+		case <-ctx.Done():
+			return nil
+		}
 	}
 }

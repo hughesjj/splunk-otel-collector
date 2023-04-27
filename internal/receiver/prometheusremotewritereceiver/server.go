@@ -37,9 +37,9 @@ type ServerConfig struct {
 	component.Host
 	Mc chan<- pmetric.Metrics
 	component.TelemetrySettings
-	Path string
-	confighttp.HTTPServerSettings
+	Path   string
 	Parser *PrometheusRemoteOtelParser
+	confighttp.HTTPServerSettings
 }
 
 func newPrometheusRemoteWriteServer(ctx context.Context, config *ServerConfig) (*prometheusRemoteWriteServer, error) {

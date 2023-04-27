@@ -58,6 +58,7 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 }
 
 func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
+	// Test is failing as can-be expected due to changes to logging in obsreporter calls
 	ctx := context.Background()
 	expectedCalls := 1
 	reporter := newMockReporter(expectedCalls)
@@ -147,8 +148,6 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 			equalTypes := assert.Equalf(t, noMetadataMetricItem.MetricMetadata.Type, metricData.MetricMetadata.Type, "%s was not %s.  metricname: %s", noMetadataMetricItem.MetricMetadata.Type, metricData.MetricMetadata.Type.String(), metricData.MetricName) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
 			if !equalTypes {
 				assert.Equal(t, noMetadataMetricItem.Labels, metricData.Labels)
-				// aight... so neither AddHeuristic nor AddMetadata is being called let alone add metadata
-				// pushed := parser.metricTypesCache.AddHeuristic(metricData.MetricMetadata.MetricFamilyName, metricData.MetricMetadata)
 				pushed := parser.metricTypesCache.AddMetadata(metricData.MetricMetadata.MetricFamilyName, metricData.MetricMetadata)
 				cachedMd, _ = parser.metricTypesCache.Get(metricData.MetricName)
 				assert.Equalf(t, cachedMd.Type, metricData.MetricMetadata.Type, "%s was not %s.  metricname: %s", cachedMd.Type, metricData.MetricMetadata.Type.String(), metricData.MetricName) // Huh, apparently 1 and 2 get coalesced to 3? is that expected?)
