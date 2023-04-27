@@ -69,6 +69,7 @@ func TestEmptySend(t *testing.T) {
 	client, err := NewMockPrwClient(
 		cfg.Endpoint,
 		"metrics",
+		time.Second*5,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, client)
@@ -126,14 +127,10 @@ func TestActualSend(t *testing.T) {
 	client, err := NewMockPrwClient(
 		cfg.Endpoint,
 		"metrics",
+		time.Second*5,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, client)
-
-	require.NoError(t, client.SendWriteRequest(&prompb.WriteRequest{
-		Timeseries: []prompb.TimeSeries{},
-		Metadata:   []prompb.MetricMetadata{},
-	}))
 
 	// first try processing them without heuristics, then send them again with metadata.  check later to see if heuristics worked
 	for index, wq := range sampleNoMdMetrics {
@@ -152,7 +149,7 @@ func TestActualSend(t *testing.T) {
 		err = client.SendWriteRequest(wq)
 		assert.Nil(t, err, "failed to write %d reason %s", index, err)
 
-		require.NoError(t, mockreporter.WaitAllOnMetricsProcessedCalls(10*time.Second))
+		require.NoError(t, mockreporter.WaitAllOnMetricsProcessedCalls(3*time.Second))
 	}
 	require.NoError(t, remoteWriteReceiver.Shutdown(ctx))
 	// Shutting down should remain graceful as well

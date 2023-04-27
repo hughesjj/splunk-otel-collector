@@ -33,7 +33,7 @@ type MockPrwClient struct {
 	Timeout time.Duration
 }
 
-func NewMockPrwClient(addr string, path string) (MockPrwClient, error) {
+func NewMockPrwClient(addr string, path string, timeout time.Duration) (MockPrwClient, error) {
 	URL := &config.URL{
 		URL: &url.URL{
 			Scheme: "http",
@@ -41,7 +41,6 @@ func NewMockPrwClient(addr string, path string) (MockPrwClient, error) {
 			Path:   path,
 		},
 	}
-	timeout := time.Second * 10
 	cfg := &remote.ClientConfig{
 		URL:              URL,
 		Timeout:          model.Duration(timeout),

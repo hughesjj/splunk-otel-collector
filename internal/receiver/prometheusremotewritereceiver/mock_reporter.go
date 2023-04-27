@@ -76,7 +76,7 @@ func (m *mockReporter) OnError(_ context.Context, _ string, err error) {
 
 func (m *mockReporter) OnMetricsProcessed(_ context.Context, numReceivedMessages int, _ error) {
 	atomic.AddInt32(m.TotalSuccessMetrics, int32(numReceivedMessages))
-	m.OpsStarted.Done()
+	m.OpsSuccess.Done()
 }
 
 func (m *mockReporter) OnDebugf(template string, args ...interface{}) {
