@@ -50,14 +50,19 @@ type MetricData struct {
 
 type PrometheusRemoteOtelParser struct {
 	metricTypesCache *internal.PrometheusMetricTypeCache
-
 	context.Context
+	SfxGatewayCompatability bool
 }
 
 func NewPrwOtelParser(ctx context.Context, capacity int) (*PrometheusRemoteOtelParser, error) {
 	return &PrometheusRemoteOtelParser{
 		metricTypesCache: internal.NewPrometheusMetricTypeCache(ctx, capacity),
 	}, nil
+}
+
+func (prwParser *PrometheusRemoteOtelParser) WithSfxCompatability(sfxGatewayCompat bool) *PrometheusRemoteOtelParser {
+	prwParser.SfxGatewayCompatability = sfxGatewayCompat
+	return prwParser
 }
 
 func (prwParser *PrometheusRemoteOtelParser) CacheMetadata(metadata []prompb.MetricMetadata) error {
@@ -151,9 +156,17 @@ func (prwParser *PrometheusRemoteOtelParser) addMetrics(rm pmetric.ResourceMetri
 	case prompb.MetricMetadata_COUNTER:
 		err = prwParser.addCounterMetrics(ilm, family, metrics, metricsMetadata)
 	case prompb.MetricMetadata_HISTOGRAM:
-		err = prwParser.addHistogramMetrics(ilm, family, metrics, metricsMetadata)
+		if prwParser.SfxGatewayCompatability {
+			err = prwParser.addHistogramCounterMetrics(ilm, family, metrics, metricsMetadata)
+		} else {
+			err = prwParser.addHistogramMetrics(ilm, family, metrics, metricsMetadata)
+		}
 	case prompb.MetricMetadata_SUMMARY:
-		err = prwParser.addSummaryMetrics(ilm, family, metrics, metricsMetadata)
+		if prwParser.SfxGatewayCompatability {
+			err = prwParser.addQuantileCounterMetrics(ilm, family, metrics, metricsMetadata)
+		} else {
+			err = prwParser.addSummaryMetrics(ilm, family, metrics, metricsMetadata)
+		}
 	case prompb.MetricMetadata_INFO, prompb.MetricMetadata_STATESET:
 		err = prwParser.addInfoStateset(ilm, family, metrics, metricsMetadata)
 	default:
@@ -320,23 +333,6 @@ func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.Scope
 	return nil
 }
 
-// addHistogramCounterMetrics supports the old signalfx format of simply reporting all histograms as counters
-func (prwParser *PrometheusRemoteOtelParser) addHistogramCounterMetrics(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
-	var translationErrors []error
-	if nil == metrics {
-		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
-	}
-	if translationErrors != nil {
-		return multierr.Combine(translationErrors...)
-	}
-	for index, metric := range metrics {
-		bucket := "bucket" // TODO extract LE from label
-		metrics[index].MetricName = metric.MetricName + bucket
-	}
-	return prwParser.addCounterMetrics(ilm, family, metrics, metadata)
-	return nil
-}
-
 func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
 	var translationErrors []error
 	if nil == metrics {
@@ -367,6 +363,38 @@ func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMe
 		}
 	}
 	return nil
+}
+
+// addQuantileCounterMetrics supports the old signalfx format of simply reporting all histograms as counters
+func (prwParser *PrometheusRemoteOtelParser) addQuantileCounterMetrics(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
+	var translationErrors []error
+	if nil == metrics {
+		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
+	}
+	if translationErrors != nil {
+		return multierr.Combine(translationErrors...)
+	}
+	for index, metric := range metrics {
+		bucket := "bucket" // TODO extract quantile from label
+		metrics[index].MetricName = metric.MetricName + bucket
+	}
+	return prwParser.addCounterMetrics(ilm, family, metrics, metadata)
+}
+
+// addHistogramCounterMetrics supports the old signalfx format of simply reporting all histograms as counters
+func (prwParser *PrometheusRemoteOtelParser) addHistogramCounterMetrics(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
+	var translationErrors []error
+	if nil == metrics {
+		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
+	}
+	if translationErrors != nil {
+		return multierr.Combine(translationErrors...)
+	}
+	for index, metric := range metrics {
+		bucket := "bucket" // TODO extract LE from label
+		metrics[index].MetricName = metric.MetricName + bucket
+	}
+	return prwParser.addCounterMetrics(ilm, family, metrics, metadata)
 }
 
 // TODO for future could
