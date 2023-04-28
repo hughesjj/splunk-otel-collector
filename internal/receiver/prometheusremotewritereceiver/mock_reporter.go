@@ -90,32 +90,35 @@ func (m *mockReporter) WaitAllOnMetricsProcessedCalls(timeout time.Duration) err
 	defer cancel()
 	allDone := &sync.WaitGroup{}
 	allDone.Add(3)
-	var done []string
+
+	done := make(chan string)
 
 	go func() {
 		m.OpsFailed.Wait()
 		allDone.Done()
-		done = append(done, "done with failed")
+		done <- "done with failed"
 	}()
 	go func() {
 		m.OpsSuccess.Wait()
 		allDone.Done()
-		done = append(done, "done with success")
+		done <- "done with success"
 	}()
 	go func() {
 		m.OpsStarted.Wait()
 		allDone.Done()
-		done = append(done, "done with started")
+		done <- "done with started"
 	}()
 	go func() {
 		allDone.Wait()
 		cancel()
 	}()
-
+	var completed []string
 	for {
 		select {
+		case completedOps := <-done:
+			completed = append(completed, completedOps)
 		case <-time.After(timeout):
-			return fmt.Errorf("took too long to return. Ones that did: %s", done)
+			return fmt.Errorf("took too long to return. Ones that did: %s", completed)
 		case <-ctx.Done():
 			return nil
 		}

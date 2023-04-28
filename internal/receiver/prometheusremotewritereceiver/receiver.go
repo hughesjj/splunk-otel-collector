@@ -76,7 +76,7 @@ func (receiver *prometheusRemoteWriteReceiver) Start(ctx context.Context, host c
 		Parser:             parser,
 	}
 	ctx, receiver.cancel = context.WithCancel(ctx)
-	server, err := newPrometheusRemoteWriteServer(ctx, cfg)
+	server, err := newPrometheusRemoteWriteServer(cfg)
 	if err != nil {
 		return err
 	}

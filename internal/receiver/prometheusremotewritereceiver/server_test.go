@@ -51,7 +51,7 @@ func TestWriteEmpty(t *testing.T) {
 	timeout := time.Second * 1000
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	remoteWriteServer, err := newPrometheusRemoteWriteServer(ctx, cfg)
+	remoteWriteServer, err := newPrometheusRemoteWriteServer(cfg)
 	assert.NoError(t, err)
 	require.NotNil(t, remoteWriteServer)
 
@@ -72,7 +72,6 @@ func TestWriteEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, client)
 	time.Sleep(100 * time.Millisecond)
-	mockReporter.AddExpectedStart(1)
 	require.NoError(t, client.SendWriteRequest(&prompb.WriteRequest{
 		Timeseries: []prompb.TimeSeries{},
 		Metadata:   []prompb.MetricMetadata{},
@@ -104,7 +103,7 @@ func TestWriteMany(t *testing.T) {
 	timeout := time.Second * 1000
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	remoteWriteServer, err := newPrometheusRemoteWriteServer(ctx, cfg)
+	remoteWriteServer, err := newPrometheusRemoteWriteServer(cfg)
 	assert.NoError(t, err)
 	require.NotNil(t, remoteWriteServer)
 
@@ -127,8 +126,6 @@ func TestWriteMany(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	wqs := testdata.GetWriteRequests()
 	for _, wq := range wqs {
-		mockReporter.AddExpectedStart(1)
-		mockReporter.AddExpectedSuccess(1)
 		require.NoError(t, client.SendWriteRequest(wq))
 	}
 

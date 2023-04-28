@@ -73,8 +73,6 @@ func TestEmptySend(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, client)
-	mockreporter.AddExpectedStart(1)
-	mockreporter.AddExpectedSuccess(1)
 	require.NoError(t, client.SendWriteRequest(&prompb.WriteRequest{
 		Timeseries: []prompb.TimeSeries{},
 		Metadata:   []prompb.MetricMetadata{},

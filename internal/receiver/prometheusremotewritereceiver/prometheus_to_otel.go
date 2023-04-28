@@ -30,9 +30,9 @@ import (
 	"github.com/signalfx/splunk-otel-collector/internal/receiver/prometheusremotewritereceiver/internal"
 )
 
-func (prwParser *PrometheusRemoteOtelParser) FromPrometheusWriteRequestMetrics(ctx context.Context, request *prompb.WriteRequest) (pmetric.Metrics, error) {
+func (prwParser *PrometheusRemoteOtelParser) FromPrometheusWriteRequestMetrics(request *prompb.WriteRequest) (pmetric.Metrics, error) {
 	var otelMetrics pmetric.Metrics
-	metricFamiliesAndData, err := prwParser.partitionWriteRequest(ctx, request)
+	metricFamiliesAndData, err := prwParser.partitionWriteRequest(request)
 	if nil == err {
 		otelMetrics, err = prwParser.TransformPrwToOtel(metricFamiliesAndData)
 	}
@@ -56,22 +56,26 @@ type PrometheusRemoteOtelParser struct {
 func NewPrwOtelParser(ctx context.Context, capacity int) (*PrometheusRemoteOtelParser, error) {
 	return &PrometheusRemoteOtelParser{
 		metricTypesCache: internal.NewPrometheusMetricTypeCache(ctx, capacity),
-		Context:          ctx,
 	}, nil
+}
+
+func (prwParser *PrometheusRemoteOtelParser) CacheMetadata(metadata []prompb.MetricMetadata) error {
+	// update cache with any metric data found.  Do this before processing any data to avoid incorrect heuristics.
+	// TODO hughesjj so wait.... Are there any guarantees about the length of Metadata w.r.t TimeSeries?
+	for _, md := range metadata {
+		prwParser.metricTypesCache.AddMetadata(md.MetricFamilyName, md)
+	}
+	return nil
 }
 
 // The ordering of the timeseries in the WriteRequest(s) matters significantly.
 // Ex for histograms you need the metrics with an le attribute to appear first
 // This function is written to prefer idempotence/maintainability over efficiency, at least until we vet the methodology
-func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(_ context.Context, writeReq *prompb.WriteRequest) (map[string][]MetricData, error) {
+func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(writeReq *prompb.WriteRequest) (map[string][]MetricData, error) {
 	partitions := make(map[string][]MetricData)
-
-	// update cache with any metric data found.  Do this before processing any data to avoid incorrect heuristics.
-	// TODO hughesjj so wait.... Are there any guarantees about the length of Metadata w.r.t TimeSeries?
-	for _, metadata := range writeReq.Metadata {
-		prwParser.metricTypesCache.AddMetadata(metadata.MetricFamilyName, metadata)
+	if err := prwParser.CacheMetadata(writeReq.Metadata); err != nil {
+		return nil, err
 	}
-
 	indexToMetricNameMapping := make([]MetricData, len(writeReq.Timeseries))
 	for index, ts := range writeReq.Timeseries {
 		metricName, filteredLabels := internal.GetMetricNameAndFilteredLabels(ts.Labels)

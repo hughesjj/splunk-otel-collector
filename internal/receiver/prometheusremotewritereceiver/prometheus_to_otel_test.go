@@ -27,7 +27,6 @@ import (
 )
 
 func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
-	ctx := context.Background()
 	reporter := newMockReporter()
 	require.NotNil(t, reporter)
 	parser, err := NewPrwOtelParser(context.Background(), 100)
@@ -35,7 +34,7 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 
 	sampleWriteRequests := testdata.GetWriteRequests()
 	for _, sampleWriteRequest := range sampleWriteRequests {
-		partitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequest)
+		partitions, err := parser.partitionWriteRequest(sampleWriteRequest)
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
@@ -46,7 +45,7 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 	}
 	sampleWriteRequestsMd := testdata.GetWriteRequestsWithMetadata()
 	for _, sampleWriteRequest := range sampleWriteRequestsMd {
-		partitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequest)
+		partitions, err := parser.partitionWriteRequest(sampleWriteRequest)
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
@@ -58,7 +57,6 @@ func TestParsePrometheusRemoteWriteRequest(t *testing.T) {
 
 func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 	// Test is failing as can-be expected due to changes to logging in obsreporter calls
-	ctx := context.Background()
 	reporter := newMockReporter()
 	require.NotNil(t, reporter)
 	parser, err := NewPrwOtelParser(context.Background(), 100)
@@ -66,7 +64,7 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 
 	sampleWriteRequests := testdata.GetWriteRequests()
 	for _, sampleWriteRequest := range sampleWriteRequests {
-		partitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequest)
+		partitions, err := parser.partitionWriteRequest(sampleWriteRequest)
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
@@ -77,7 +75,7 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 	}
 	sampleWriteRequestsMd := testdata.GetWriteRequestsWithMetadata()
 	for _, sampleWriteRequest := range sampleWriteRequestsMd {
-		partitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequest)
+		partitions, err := parser.partitionWriteRequest(sampleWriteRequest)
 		require.NoError(t, err)
 		for key, partition := range partitions {
 			for _, md := range partition {
@@ -91,14 +89,13 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 }
 
 func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
-	ctx := context.Background()
 	reporter := newMockReporter()
 	require.NotNil(t, reporter)
 	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())
-	noMdPartitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequests)
+	noMdPartitions, err := parser.partitionWriteRequest(sampleWriteRequests)
 	require.NoError(t, err)
 	require.Empty(t, sampleWriteRequests.Metadata, "NoMetadata (heuristical) portion of test contains metadata")
 
@@ -123,7 +120,7 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	}
 
 	sampleWriteRequestsMd := testdata.FlattenWriteRequests(testdata.GetWriteRequestsWithMetadata())
-	mdPartitions, err := parser.partitionWriteRequest(ctx, sampleWriteRequestsMd)
+	mdPartitions, err := parser.partitionWriteRequest(sampleWriteRequestsMd)
 	require.NoError(t, err)
 	for key, partition := range mdPartitions {
 		for _, metricData := range partition {
@@ -174,7 +171,7 @@ func TestFromWriteRequest(t *testing.T) {
 	// TODO maybe add a recover on this
 	reporter.AddExpectedStart(len(sampleWriteRequests.Timeseries))
 	reporter.AddExpectedSuccess(len(sampleWriteRequests.Timeseries))
-	metrics, err := parser.FromPrometheusWriteRequestMetrics(context.Background(), sampleWriteRequests)
+	metrics, err := parser.FromPrometheusWriteRequestMetrics(sampleWriteRequests)
 	require.Nil(t, err)
 	require.NotNil(t, metrics)
 	assert.NotNil(t, metrics.ResourceMetrics())
