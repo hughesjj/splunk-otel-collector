@@ -37,6 +37,8 @@ type Config struct {
 	BufferSize int `mapstructure:"buffer_size"`
 	// CacheCapacity determines LRU capacity for how many different metrics may concurrently have persisted metadata.
 	CacheCapacity int `mapstructure:"cache_size"`
+	// HistogramsAsCounters will convert le, quantile, and other histogram likemetrics into a counter instead.
+	HistogramsAsCounters int `mapstructure:"cache_size"`
 }
 
 func (c *Config) Validate() error {

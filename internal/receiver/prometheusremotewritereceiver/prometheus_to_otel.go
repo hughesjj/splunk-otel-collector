@@ -41,10 +41,10 @@ func (prwParser *PrometheusRemoteOtelParser) FromPrometheusWriteRequestMetrics(r
 
 type MetricData struct {
 	MetricName     string
-	Labels         *[]prompb.Label
-	Samples        *[]prompb.Sample
-	Exemplars      *[]prompb.Exemplar
-	Histograms     *[]prompb.Histogram
+	Labels         []prompb.Label
+	Samples        []prompb.Sample
+	Exemplars      []prompb.Exemplar
+	Histograms     []prompb.Histogram
 	MetricMetadata prompb.MetricMetadata
 }
 
@@ -90,10 +90,10 @@ func (prwParser *PrometheusRemoteOtelParser) partitionWriteRequest(writeReq *pro
 			Type:             metricType,
 		})
 		indexToMetricNameMapping[index] = MetricData{
-			Labels:     &filteredLabels,
-			Samples:    &writeReq.Timeseries[index].Samples,
-			Exemplars:  &writeReq.Timeseries[index].Exemplars,
-			Histograms: &writeReq.Timeseries[index].Histograms,
+			Labels:     filteredLabels,
+			Samples:    writeReq.Timeseries[index].Samples,
+			Exemplars:  writeReq.Timeseries[index].Exemplars,
+			Histograms: writeReq.Timeseries[index].Histograms,
 			MetricName: metricName,
 		}
 	}
@@ -147,15 +147,15 @@ func (prwParser *PrometheusRemoteOtelParser) addMetrics(rm pmetric.ResourceMetri
 	var err error
 	switch metricsMetadata.Type {
 	case prompb.MetricMetadata_GAUGE, prompb.MetricMetadata_UNKNOWN:
-		err = prwParser.addGaugeMetrics(ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addGaugeMetrics(ilm, family, metrics, metricsMetadata)
 	case prompb.MetricMetadata_COUNTER:
-		err = prwParser.addCounterMetrics(ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addCounterMetrics(ilm, family, metrics, metricsMetadata)
 	case prompb.MetricMetadata_HISTOGRAM:
-		err = prwParser.addHistogramMetrics(ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addHistogramMetrics(ilm, family, metrics, metricsMetadata)
 	case prompb.MetricMetadata_SUMMARY:
-		err = prwParser.addSummaryMetrics(ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addSummaryMetrics(ilm, family, metrics, metricsMetadata)
 	case prompb.MetricMetadata_INFO, prompb.MetricMetadata_STATESET:
-		err = prwParser.addInfoStateset(ilm, family, &metrics, metricsMetadata)
+		err = prwParser.addInfoStateset(ilm, family, metrics, metricsMetadata)
 	default:
 		err = fmt.Errorf("unsupported type %s for metric family %s", metricsMetadata.Type, family)
 	}
@@ -176,16 +176,16 @@ func (prwParser *PrometheusRemoteOtelParser) scaffoldNewMetric(ilm pmetric.Scope
 	return nm
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
 	var translationErrors []error
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
 
-	for _, metricsData := range *metrics {
+	for _, metricsData := range metrics {
 		if metricsData.MetricName != "" {
 			nm.SetName(metricsData.MetricName)
 		}
 		histogramDps := nm.SetEmptyHistogram()
-		for _, sample := range *metricsData.Histograms {
+		for _, sample := range metricsData.Histograms {
 			dp := histogramDps.DataPoints().AppendEmpty()
 			// TODO get max (likely)
 			dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
@@ -193,7 +193,7 @@ func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(ilm pmetric.Sco
 			dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
 			dp.SetSum(sample.GetSum())
 			dp.SetCount(sample.GetCountInt())
-			for _, attr := range *metricsData.Labels {
+			for _, attr := range metricsData.Labels {
 				if attr.Name == "le" {
 					val, err := strconv.Atoi(attr.Value)
 					if err != nil {
@@ -206,11 +206,11 @@ func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(ilm pmetric.Sco
 					dp.Attributes().PutStr(attr.Name, attr.Value)
 				}
 			}
-			for _, sample := range *metricsData.Samples {
+			for _, sample := range metricsData.Samples {
 				dp := histogramDps.DataPoints().AppendEmpty()
 				dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
 				dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
-				for _, attr := range *metricsData.Labels {
+				for _, attr := range metricsData.Labels {
 					if attr.Name == "le" {
 						val, err := strconv.Atoi(attr.Value)
 						if err != nil {
@@ -232,7 +232,7 @@ func (prwParser *PrometheusRemoteOtelParser) addHistogramMetrics(ilm pmetric.Sco
 	return nil
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addSummaryMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+func (prwParser *PrometheusRemoteOtelParser) addSummaryMetrics(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
 	var translationErrors []error
 	if nil == metrics {
 		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
@@ -241,20 +241,20 @@ func (prwParser *PrometheusRemoteOtelParser) addSummaryMetrics(ilm pmetric.Scope
 		return multierr.Combine(translationErrors...)
 	}
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
-	for _, metricsData := range *metrics {
+	for _, metricsData := range metrics {
 		if metricsData.MetricName != "" {
 			nm.SetName(metricsData.MetricName)
 		}
 		summaryDps := nm.SetEmptySummary()
 
-		for _, sample := range *metricsData.Samples {
+		for _, sample := range metricsData.Samples {
 			dp := summaryDps.DataPoints().AppendEmpty()
 			sample.Descriptor()
 			dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
 			dp.SetStartTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
 			dp.SetSum(sample.GetValue())
 			dp.SetCount(uint64(sample.Size()))
-			for _, attr := range *metricsData.Labels {
+			for _, attr := range metricsData.Labels {
 				dp.Attributes().PutStr(attr.Name, attr.Value)
 			}
 		}
@@ -262,7 +262,7 @@ func (prwParser *PrometheusRemoteOtelParser) addSummaryMetrics(ilm pmetric.Scope
 	return nil
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addGaugeMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+func (prwParser *PrometheusRemoteOtelParser) addGaugeMetrics(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
 	var translationErrors []error
 	if nil == metrics {
 		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
@@ -271,16 +271,16 @@ func (prwParser *PrometheusRemoteOtelParser) addGaugeMetrics(ilm pmetric.ScopeMe
 		return multierr.Combine(translationErrors...)
 	}
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
-	for _, metricsData := range *metrics {
+	for _, metricsData := range metrics {
 		if metricsData.MetricName != "" {
 			nm.SetName(metricsData.MetricName)
 		}
 		gauge := nm.SetEmptyGauge()
-		for _, sample := range *metricsData.Samples {
+		for _, sample := range metricsData.Samples {
 			dp := gauge.DataPoints().AppendEmpty()
 			dp.SetDoubleValue(sample.Value)
 			dp.SetTimestamp(pcommon.Timestamp(sample.Timestamp * int64(time.Millisecond)))
-			for _, attr := range *metricsData.Labels {
+			for _, attr := range metricsData.Labels {
 				dp.Attributes().PutStr(attr.Name, attr.Value)
 			}
 		}
@@ -288,7 +288,7 @@ func (prwParser *PrometheusRemoteOtelParser) addGaugeMetrics(ilm pmetric.ScopeMe
 	return nil
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
 	var translationErrors []error
 	if nil == metrics {
 		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
@@ -297,7 +297,7 @@ func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.Scope
 		return multierr.Combine(translationErrors...)
 	}
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
-	for _, metricsData := range *metrics {
+	for _, metricsData := range metrics {
 		// TODO yeah no
 		if metricsData.MetricName != "" {
 			nm.SetName(metricsData.MetricName)
@@ -307,11 +307,11 @@ func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.Scope
 		sumMetric.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 		// TODO hughesjj No idea how correct this is, but scraper always sets this way.  could totally see PRW being different
 		sumMetric.SetIsMonotonic(true)
-		for _, sample := range *metricsData.Samples {
+		for _, sample := range metricsData.Samples {
 			counter := nm.Sum().DataPoints().AppendEmpty()
 			counter.SetDoubleValue(sample.Value)
 			counter.SetTimestamp(pcommon.Timestamp(sample.Timestamp * int64(time.Millisecond)))
-			for _, attr := range *metricsData.Labels {
+			for _, attr := range metricsData.Labels {
 				counter.Attributes().PutStr(attr.Name, attr.Value)
 			}
 			// Fairly certain counter is byref here
@@ -320,7 +320,24 @@ func (prwParser *PrometheusRemoteOtelParser) addCounterMetrics(ilm pmetric.Scope
 	return nil
 }
 
-func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMetrics, family string, metrics *[]MetricData, metadata prompb.MetricMetadata) error {
+// addHistogramCounterMetrics supports the old signalfx format of simply reporting all histograms as counters
+func (prwParser *PrometheusRemoteOtelParser) addHistogramCounterMetrics(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
+	var translationErrors []error
+	if nil == metrics {
+		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
+	}
+	if translationErrors != nil {
+		return multierr.Combine(translationErrors...)
+	}
+	for index, metric := range metrics {
+		bucket := "bucket" // TODO extract LE from label
+		metrics[index].MetricName = metric.MetricName + bucket
+	}
+	return prwParser.addCounterMetrics(ilm, family, metrics, metadata)
+	return nil
+}
+
+func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMetrics, family string, metrics []MetricData, metadata prompb.MetricMetadata) error {
 	var translationErrors []error
 	if nil == metrics {
 		translationErrors = append(translationErrors, fmt.Errorf("Nil metricsdata pointer! %s", family))
@@ -329,7 +346,7 @@ func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMe
 		return multierr.Combine(translationErrors...)
 	}
 	nm := prwParser.scaffoldNewMetric(ilm, family, metadata)
-	for _, metricsData := range *metrics {
+	for _, metricsData := range metrics {
 		// TODO better way to do this
 		if metricsData.MetricName != "" {
 			nm.SetName(metricsData.MetricName)
@@ -340,11 +357,11 @@ func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMe
 		sumMetric.SetIsMonotonic(false)
 		sumMetric.SetAggregationTemporality(pmetric.AggregationTemporalityUnspecified)
 
-		for _, sample := range *metricsData.Samples {
+		for _, sample := range metricsData.Samples {
 			dp := sumMetric.DataPoints().AppendEmpty()
 			dp.SetTimestamp(pcommon.Timestamp(sample.GetTimestamp() * int64(time.Millisecond)))
 			dp.SetDoubleValue(sample.GetValue()) // TODO hughesjj maybe see if can be intvalue
-			for _, attr := range *metricsData.Labels {
+			for _, attr := range metricsData.Labels {
 				dp.Attributes().PutStr(attr.Name, attr.Value)
 			}
 		}
