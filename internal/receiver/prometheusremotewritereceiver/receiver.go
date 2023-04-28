@@ -67,6 +67,7 @@ func (receiver *prometheusRemoteWriteReceiver) Start(ctx context.Context, host c
 	if err != nil {
 		return err
 	}
+	parser = parser.WithSfxCompatability(receiver.config.SfxGatewayCompatability)
 	cfg := &ServerConfig{
 		HTTPServerSettings: receiver.config.HTTPServerSettings,
 		Path:               receiver.config.ListenPath,

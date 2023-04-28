@@ -19,7 +19,7 @@ This receiver is configured via standard OpenTelemetry mechanisms.  See [`config
   * Defaults to `100`
 * `cache_size` is the number of most recent metadata requests which should be stored.  Turn this to zero if you wish to disable caching between requests, but do ensure your metrics write requests are independently and consistently parseable without any metadata if so.
   * Defaults to `10000`
-* `sfx_gateway_compatability` will transmit otel metrics in a similar shape to how the signalfx prometheus gateway does.  Specifically, it will transform histograms and quantiles [into counters](https://github.com/signalfx/gateway/blob/main/protocol/prometheus/prometheuslistener.go#L98), suffixing the `le` or `quantile` name to the metric name.
+* `sfx_gateway_compatibility` will transmit otel metrics in a similar shape to how the signalfx prometheus gateway does.  Specifically, it will transform histograms and quantiles [into counters](https://github.com/signalfx/gateway/blob/main/protocol/prometheus/prometheuslistener.go#L98), suffixing the `le` or `quantile` name to the metric name.
   * Defaults to `false`
 
 This receiver uses `opentelemetry-collector`'s [`confighttp`](https://github.com/open-telemetry/opentelemetry-collector/blob/main/config/confighttp/confighttp.go#L206) options if you would like to set up tls or similar.  (See linked documentation for the most up-to-date details).
