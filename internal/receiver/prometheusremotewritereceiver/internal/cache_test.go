@@ -48,8 +48,6 @@ func TestCacheAccessPatterns(t *testing.T) {
 		})
 	}
 
-	// TODO FUCK yo we put it into gauge
-
 	// ensure eviction of least recently used
 	_, exists = pmtCache.Get("0")
 	assert.False(t, exists)

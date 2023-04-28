@@ -50,6 +50,7 @@ type MetricData struct {
 
 type PrometheusRemoteOtelParser struct {
 	metricTypesCache *internal.PrometheusMetricTypeCache
+
 	context.Context
 }
 
@@ -356,10 +357,4 @@ func (prwParser *PrometheusRemoteOtelParser) addInfoStateset(ilm pmetric.ScopeMe
 // 2. allow providing config.go option or even file in config.go to "seed" metadata and the likes
 
 // TODO hughesjj okay so next steps
-// Alright probably should either do tests, add the cache for buckets and/or quantiles, or just converge your histogram impl
-// probably best to make tests more stable and port over the other older ones first before going at it
-// which means first order of business is finding out the failures for mock issues given changes to reporting
-// counts currently are
-// promtootel: 7, 1 processed 6 errors
-// receiver: 1 start 1 error 1 processed 1 debug
-// server: 1 start 1 error 1 processed 1 debug
+// Alright probably should either add the cache for buckets and/or quantiles, or just converge your histogram impl
