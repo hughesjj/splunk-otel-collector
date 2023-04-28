@@ -88,6 +88,9 @@ func TestParseAndPartitionPrometheusRemoteWriteRequest(t *testing.T) {
 	}
 }
 
+// TestParseAndPartitionMixedPrometheusRemoteWriteRequest ensures that, should we get metric families without metadata,
+// but with an otherwise PRW v1.0 compliant request, our heuristical approach will match what's we would expect the
+// actual metadata to look like.
 func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 	reporter := newMockReporter()
 	require.NotNil(t, reporter)
@@ -162,19 +165,13 @@ func TestParseAndPartitionMixedPrometheusRemoteWriteRequest(t *testing.T) {
 }
 
 func TestFromWriteRequest(t *testing.T) {
-	reporter := newMockReporter()
-	require.NotNil(t, reporter)
 	parser, err := NewPrwOtelParser(context.Background(), 100)
 	require.Nil(t, err)
 
 	sampleWriteRequests := testdata.FlattenWriteRequests(testdata.GetWriteRequests())
-	// TODO maybe add a recover on this
-	reporter.AddExpectedStart(len(sampleWriteRequests.Timeseries))
-	reporter.AddExpectedSuccess(len(sampleWriteRequests.Timeseries))
 	metrics, err := parser.FromPrometheusWriteRequestMetrics(sampleWriteRequests)
 	require.Nil(t, err)
 	require.NotNil(t, metrics)
 	assert.NotNil(t, metrics.ResourceMetrics())
 	assert.Greater(t, metrics.DataPointCount(), 0)
-	recover()
 }
